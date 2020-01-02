@@ -1,0 +1,10 @@
+[package]
+name = "geld-parser"
+version = "0.1.0"
+authors = ["andreaskundig <andreas.kuendig@gmx.ch>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mt940 = "0.3.2"
