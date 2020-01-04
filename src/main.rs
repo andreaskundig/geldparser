@@ -13,8 +13,10 @@ fn main() {
         .expect("Something went wrong reading the file");
 
     let sanitized = sanitizers::sanitize(&contents[..]);
-    let input_parsed = parse_mt940(&sanitized[..]).unwrap();
-    println!("{:?}", input_parsed);
+    let messages = parse_mt940(&sanitized[..]).unwrap();
+    let message = &messages[0];
+    println!("{:?}", message.opening_balance.amount);
+    println!("{:?}", message.statement_lines[0]);
 }
 
 struct Config {
@@ -23,11 +25,10 @@ struct Config {
 
 impl Config {
     fn new(args: &[String]) -> Config {
-        if args.len() < 2 {
-            panic!("not enough arguments");
+        let mut filename = String::from("../bewegungen/2019.mt940");
+        if args.len() > 1 {
+            filename = args[1].clone();
         }
-        let filename = args[1].clone();
-
         Config { filename }
     }
 }
