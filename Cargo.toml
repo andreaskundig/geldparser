@@ -1,5 +1,5 @@
 [package]
-name = "geld-parser"
+name = "geldparser"
 version = "0.1.0"
 authors = ["andreaskundig <andreas.kuendig@gmx.ch>"]
 edition = "2018"
