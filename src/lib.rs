@@ -20,44 +20,77 @@ pub fn run(config: Config){
     println!("{:?}", message.opening_balance.amount);
     //let statement = &message.statement_lines[0];
     for statement in &message.statement_lines {
-        let recipient =
-            extract_maestro_recipient(statement).unwrap_or("not maestro");
-        let owner_info =
-            statement.information_to_account_owner.as_ref()
-            .map(String::as_ref).unwrap_or("no info");
         println!("{} {}\n {:?}",
                  statement.value_date.format("%Y/%m/%d").to_string(),
                  statement.supplementary_details.as_ref().unwrap(),
                  statement.amount,);
+        let entry_o = extract_transaction(statement);
+        if entry_o.is_some() {
+             let entry = entry_o.unwrap();
+            println!("recipient: {}",
+                     remove_newlines(entry.recipient));
+             println!("account: {}", entry.account);
+        }
+        let owner_info =
+            statement.information_to_account_owner.as_ref()
+            .map(String::as_ref).unwrap_or("no info");
         println!("owner info: {}", owner_info);
-        println!("maestro recipient: {}\n", remove_newlines(recipient));
+        println!("------------------------");
     }
         
 }
 
-fn extract_maestro_recipient(statement: &mt940::StatementLine)-> Option<&str>{
+// TODO match regex, return Entry (find a better name?)
+struct Transaction<'a>{
+    recipient : &'a str,
+    account : &'a str,
+}
+
+fn extract_transaction(statement: &mt940::StatementLine)-> Option<Transaction>{
+    let owner_info = extract_owner_info(statement);
+    owner_info.and_then(
+        {|oi|
+         extract_maestro_transaction(oi)
+         .or(extract_sig_transaction(oi))
+        })
+        
+}
+
+fn extract_owner_info(statement: &mt940::StatementLine)-> Option<&str>{
     let op_string_ref: Option<&String> =
         statement.information_to_account_owner.as_ref();
     // https://stackoverflow.com/questions/31233938/converting-from-optionstring-to-optionstr
-    let op_str: Option<&str> = op_string_ref.map(String::as_str);
-    op_str.and_then(|str|{
-        extract_maestro_recipient_from_owner_info(str)
-    })
+    op_string_ref.map(String::as_str)
 }
 
-fn extract_maestro_recipient_from_owner_info(owner_info: &str) -> Option<&str>{
+fn extract_maestro_transaction(owner_info: &str) -> Option<Transaction>{
     // https://rust-lang-nursery.github.io/rust-cookbook/text/regex.html
     lazy_static! {
-        static ref RECIPIENT: Regex = Regex::new(
+        static ref MAESTRO: Regex = Regex::new(
             r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)").unwrap();
-        static ref NEW_LINE: Regex = Regex::new(r"\n").unwrap();
     }
-    let c = RECIPIENT.captures(owner_info);
+    let c = MAESTRO.captures(owner_info);
     c.and_then(|cap|{
-         cap.get(1).map(|m| m.as_str())
+        cap.get(1).map(
+            |m| Transaction{recipient: m.as_str(),
+                            account: "debit-card"})
     })
 }
 
+fn extract_sig_transaction(owner_info: &str) -> Option<Transaction>{
+    // https://rust-lang-nursery.github.io/rust-cookbook/text/regex.html
+    lazy_static! {
+        static ref SIG: Regex = Regex::new(
+            r"Services Industriels de Geneve").unwrap();
+    }
+    if SIG.is_match(owner_info) {
+        Some(Transaction{recipient: "Services Industriels de Geneve",
+                         account: "loyer"})
+    }else{
+        None
+    }
+    
+}
 //TODO understand cow
 fn remove_newlines(text: &str) -> Cow<str>{
     // https://rust-lang-nursery.github.io/rust-cookbook/text/regex.html
