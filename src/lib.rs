@@ -9,8 +9,18 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::fs;
 use chrono::NaiveDate;
-// use std::io;
 use text_io::read;
+
+// fn accounts() -> [std::string::String;3]{
+//     return [String::from("Expenses::Maestro"),
+//             String::from("Expenses::Appartment::Electricity"),
+//             String::from("Expenses::Rest")];
+
+// }
+
+// fn accounts() -> std::string::String{
+//     return String::from("Expenses::Maestro")
+// }
 
 pub fn run(config: Config) {
     let filename = config.filename;
