@@ -1,0 +1,12 @@
+* doc
+https://www.ledger-cli.org/3.0/doc/ledger3.html
+https://www.ledger-cli.org/3.0/doc/ledger-mode.html
+https://doc.rust-lang.org/stable/book/
+https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-ledger.html
+idea for classifier
+https://blog.andrewcantino.com/blog/2013/02/16/command-line-accounting-with-ledger-and-reckon/
+* run 
+cargon run
+
+# does not work in eshell 
+cargo run --example event-read
