@@ -26,7 +26,7 @@ use std::fs;
 
 pub fn run(config: Config) {
     let filename = config.filename;
-    println!("{:?}", filename);
+    println!("; {:?}", filename);
 
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
 
@@ -35,16 +35,10 @@ pub fn run(config: Config) {
 
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
-    println!("messages {:?}", messages.len());
     for (index, message) in (&messages).iter().enumerate() {
         // for message in &messages {
         if index == 0 {
-            println!(
-                "{} opening balance {:?} lines {:?}",
-                index,
-                message.opening_balance.amount,
-                message.statement_lines.len()
-            );
+            println!("{}\n", Transaction::new_opening_balance(&message));
         }
 
         //let statement = &message.statement_lines[0];
@@ -60,8 +54,8 @@ pub fn run(config: Config) {
 
 struct Transaction<'a> {
     recipient: Recipient<'a>,
-    details: &'a str,
-    info_to_owner: &'a str,
+    details: Option<&'a str>,
+    info_to_owner: Option<&'a str>,
     date: &'a NaiveDate,
     amount: &'a Decimal,
 }
@@ -72,6 +66,20 @@ struct Recipient<'a> {
 }
 
 impl<'a> Transaction<'a> {
+    fn new_opening_balance(message: &'a mt940::Message) -> Transaction<'a> {
+        let recipient = Recipient {
+            name: "Checking Balance",
+            account: "Equity::Opening Balances",
+        };
+        let info_to_owner = &message.information_to_account_owner;
+        Transaction {
+            date: &message.opening_balance.date,
+            amount: &message.opening_balance.amount,
+            recipient: recipient,
+            details: Option::None,
+            info_to_owner: info_to_owner.as_ref().map(String::as_str),
+        }
+    }
     fn new(statement: &'a mt940::StatementLine) -> Transaction<'a> {
         let recipient = extract_recipient(statement);
         let entry_date = statement.entry_date.as_ref();
@@ -81,21 +89,24 @@ impl<'a> Transaction<'a> {
             date: date,
             amount: &statement.amount,
             recipient: recipient,
-            details: statement.supplementary_details.as_ref().unwrap(),
-            info_to_owner: info_to_owner.as_ref().unwrap(),
+            details: statement.supplementary_details.as_ref().map(String::as_str),
+            info_to_owner: info_to_owner,
         }
     }
 }
 
 impl<'a> fmt::Display for Transaction<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let info_to_owner_str = self.info_to_owner.unwrap_or("-");
+        let details_str = self.details.unwrap_or("-");
+        //TODO only add a line for details/owner_info if they are present
         write!(
             f,
             "{} {}\n  ; {}\n  ; {}\n  {}             {:?}\n  Assets::Checking",
-            self.date,
+            self.date.format("%Y/%m/%d"),
             remove_newlines(self.recipient.name),
-            self.details,
-            remove_newlines(self.info_to_owner),
+            details_str,
+            remove_newlines(info_to_owner_str),
             self.recipient.account,
             self.amount
         )

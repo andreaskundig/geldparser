@@ -5,8 +5,18 @@ https://doc.rust-lang.org/stable/book/
 https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-ledger.html
 idea for classifier
 https://blog.andrewcantino.com/blog/2013/02/16/command-line-accounting-with-ledger-and-reckon/
+
+[[file:drewr3.dat::;%20-*-%20ledger%20-*-][ledger example file drewr3.bat]]
+
 * run 
-cargon run
+
+ #+BEGIN_SRC emacs-lisp
+ (run-in-buffer "." "ledger -f drewr3.dat balance" "*ledg")
+ #+END_SRC
+
+ledger -f drewr3.dat balance
+
+cargo run
 
 # does not work in eshell 
 cargo run --example event-read
