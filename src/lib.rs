@@ -13,6 +13,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fs;
 
+pub mod accounts;
 // fn accounts() -> [std::string::String;3]{
 //     return [String::from("Expenses::Maestro"),
 //             String::from("Expenses::Appartment::Electricity"),

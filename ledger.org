@@ -14,9 +14,11 @@ https://blog.andrewcantino.com/blog/2013/02/16/command-line-accounting-with-ledg
  (run-in-buffer "." "ledger -f drewr3.dat balance" "*ledg")
  #+END_SRC
 
-ledger -f drewr3.dat balance
+ #+BEGIN_SRC emacs-lisp
+ (run-in-buffer "." "cargo run" "*cargo")
+ #+END_SRC
 
-cargo run
+ #+RESULTS:
 
 # does not work in eshell 
 cargo run --example event-read
