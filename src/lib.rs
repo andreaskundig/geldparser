@@ -3,7 +3,11 @@ extern crate lazy_static;
 extern crate chrono;
 extern crate regex;
 extern crate rust_decimal;
-
+use crate::accounts::Account::*;
+use crate::accounts::Apartment::*;
+use crate::accounts::Equity::*;
+use crate::accounts::Expenses::*;
+use crate::accounts::*;
 use chrono::NaiveDate;
 use mt940::parse_mt940;
 use mt940::sanitizers;
@@ -14,16 +18,6 @@ use std::fmt;
 use std::fs;
 
 pub mod accounts;
-// fn accounts() -> [std::string::String;3]{
-//     return [String::from("Expenses::Maestro"),
-//             String::from("Expenses::Appartment::Electricity"),
-//             String::from("Expenses::Rest")];
-
-// }
-
-// fn accounts() -> std::string::String{
-//     return String::from("Expenses::Maestro")
-// }
 
 pub fn run(config: Config) {
     let filename = config.filename;
@@ -63,14 +57,14 @@ struct Transaction<'a> {
 
 struct Recipient<'a> {
     name: &'a str,
-    account: &'a str,
+    account: Account,
 }
 
 impl<'a> Transaction<'a> {
     fn new_opening_balance(message: &'a mt940::Message) -> Transaction<'a> {
         let recipient = Recipient {
             name: "Checking Balance",
-            account: "Equity::Opening Balances",
+            account: Equity(OpeningBalances),
         };
         let info_to_owner = &message.information_to_account_owner;
         Transaction {
@@ -143,7 +137,7 @@ fn extract_maestro_transaction(owner_info: &str) -> Option<Recipient> {
     c.and_then(|cap| {
         cap.get(1).map(|m| Recipient {
             name: m.as_str(),
-            account: "Expenses::Maestro",
+            account: Expenses(Maestro),
         })
     })
 }
@@ -156,7 +150,7 @@ fn extract_sig_transaction(owner_info: &str) -> Option<Recipient> {
     if SIG.is_match(owner_info) {
         Some(Recipient {
             name: "Services Industriels de Geneve",
-            account: "Expenses::Appartment::Electricity",
+            account: Expenses(Apartment(Electricity)),
         })
     } else {
         None
@@ -166,7 +160,7 @@ fn extract_sig_transaction(owner_info: &str) -> Option<Recipient> {
 fn extract_rest_transaction(owner_info: &str) -> Option<Recipient> {
     Some(Recipient {
         name: owner_info,
-        account: "Expenses::Rest",
+        account: Expenses(Rest),
     })
 }
 
