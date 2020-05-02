@@ -3,19 +3,12 @@ extern crate lazy_static;
 extern crate chrono;
 extern crate regex;
 extern crate rust_decimal;
-use crate::accounts::Account::*;
-use crate::accounts::Apartment::*;
-use crate::accounts::Equity::*;
-use crate::accounts::Expenses::*;
-use crate::accounts::*;
+use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
 use chrono::NaiveDate;
-use mt940::parse_mt940;
-use mt940::sanitizers;
+use mt940::{parse_mt940, sanitizers};
 use regex::Regex;
 use rust_decimal::Decimal;
-use std::borrow::Cow;
-use std::fmt;
-use std::fs;
+use std::{borrow::Cow, fmt, fs};
 
 pub mod accounts;
 
