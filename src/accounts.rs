@@ -1,3 +1,6 @@
+extern crate derive_more;
+use derive_more::{Display};
+
 use crossterm::{
     event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
     execute,
@@ -7,36 +10,27 @@ use crossterm::{
 use std::io::{stdout, Write};
 use std::{cmp, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum Apartment {
     Electricity,
     Rent,
 }
 
-impl<'a> fmt::Display for Apartment {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Apartment::Electricity => write!(f, "Electricity"),
-            Apartment::Rent => write!(f, "Rent"),
-        }
-    }
-}
+// impl<'a> fmt::Display for Apartment {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         match *self {
+//             Apartment::Electricity => write!(f, "Electricity"),
+//             Apartment::Rent => write!(f, "Rent"),
+//         }
+//     }
+// }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum Expenses<'a> {
     Maestro,
     Rest,
+    #[display(fmt = "Apartement::{}", _0)]
     Apartment(&'a Apartment),
-}
-
-impl<'a> fmt::Display for Expenses<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expenses::Maestro => write!(f, "Maestro"),
-            Expenses::Rest => write!(f, "Rest"),
-            Expenses::Apartment(ap) => write!(f, "Apartement::{}", ap),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -50,19 +44,12 @@ impl<'a> fmt::Display for Equity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum Account<'a> {
+    #[display(fmt = "Expenses::{}", _0)]
     Expenses(&'a Expenses<'a>),
+    #[display(fmt = "Equity::{}", _0)]
     Equity(&'a Equity),
-}
-
-impl<'a> fmt::Display for Account <'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Account::Expenses(e) => write!(f, "Expenses::{}", e),
-            Account::Equity(e) => write!(f, "Equity::{}", e),
-        }
-    }
 }
 
 pub const ACCOUNTS: [Account; 3] = [
