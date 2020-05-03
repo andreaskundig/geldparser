@@ -50,14 +50,14 @@ struct Transaction<'a> {
 
 struct Recipient<'a> {
     name: &'a str,
-    account: Account,
+    account: Account<'static>,
 }
 
 impl<'a> Transaction<'a> {
     fn new_opening_balance(message: &'a mt940::Message) -> Transaction<'a> {
         let recipient = Recipient {
             name: "Checking Balance",
-            account: Equity(OpeningBalances),
+            account: Equity(&OpeningBalances),
         };
         let info_to_owner = &message.information_to_account_owner;
         Transaction {
@@ -130,7 +130,7 @@ fn extract_maestro_transaction(owner_info: &str) -> Option<Recipient> {
     c.and_then(|cap| {
         cap.get(1).map(|m| Recipient {
             name: m.as_str(),
-            account: Expenses(Maestro),
+            account: Expenses(&Maestro),
         })
     })
 }
@@ -143,7 +143,7 @@ fn extract_sig_transaction(owner_info: &str) -> Option<Recipient> {
     if SIG.is_match(owner_info) {
         Some(Recipient {
             name: "Services Industriels de Geneve",
-            account: Expenses(Apartment(Electricity)),
+            account: Expenses(&Apartment(&Electricity)),
         })
     } else {
         None
@@ -153,7 +153,7 @@ fn extract_sig_transaction(owner_info: &str) -> Option<Recipient> {
 fn extract_rest_transaction(owner_info: &str) -> Option<Recipient> {
     Some(Recipient {
         name: owner_info,
-        account: Expenses(Rest),
+        account: Expenses(&Rest),
     })
 }
 

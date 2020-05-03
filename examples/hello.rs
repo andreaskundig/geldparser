@@ -1,7 +1,6 @@
 extern crate geldparser;
-use geldparser::accounts::Apartment;
+use geldparser::accounts::ACCOUNTS;
 
 fn main() {
-    let a = Apartment::Rent;
-    println!("hello example {:?}", a);
+    println!("hello example {:?}", ACCOUNTS[1]);
 }

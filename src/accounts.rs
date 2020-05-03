@@ -7,7 +7,7 @@ use crossterm::{
 use std::io::{stdout, Write};
 use std::{cmp, fmt};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub enum Apartment {
     Electricity,
     Rent,
@@ -15,31 +15,31 @@ pub enum Apartment {
 
 impl<'a> fmt::Display for Apartment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
+        match *self {
             Apartment::Electricity => write!(f, "Electricity"),
             Apartment::Rent => write!(f, "Rent"),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Expenses {
+#[derive(Debug)]
+pub enum Expenses<'a> {
     Maestro,
     Rest,
-    Apartment(Apartment),
+    Apartment(&'a Apartment),
 }
 
-impl<'a> fmt::Display for Expenses {
+impl<'a> fmt::Display for Expenses<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expenses::Maestro => write!(f, "Maestro"),
             Expenses::Rest => write!(f, "Rest"),
-            Expenses::Apartment(a) => write!(f, "Apartement::{}", a),
+            Expenses::Apartment(ap) => write!(f, "Apartement::{}", ap),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub enum Equity {
     OpeningBalances,
 }
@@ -50,13 +50,13 @@ impl<'a> fmt::Display for Equity {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Account {
-    Expenses(Expenses),
-    Equity(Equity),
+#[derive(Debug)]
+pub enum Account<'a> {
+    Expenses(&'a Expenses<'a>),
+    Equity(&'a Equity),
 }
 
-impl<'a> fmt::Display for Account {
+impl<'a> fmt::Display for Account <'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Account::Expenses(e) => write!(f, "Expenses::{}", e),
@@ -66,24 +66,23 @@ impl<'a> fmt::Display for Account {
 }
 
 pub const ACCOUNTS: [Account; 3] = [
-    Account::Expenses(Expenses::Maestro),
-    Account::Expenses(Expenses::Apartment(Apartment::Electricity)),
-    Account::Expenses(Expenses::Rest),
+    Account::Expenses(&Expenses::Maestro),
+    Account::Expenses(&Expenses::Apartment(&Apartment::Electricity)),
+    Account::Expenses(&Expenses::Rest),
 ];
 
-pub fn choose_account_from_command_line() -> Result<Account> {
+pub fn choose_account_from_command_line<'a> () -> Result<&'a Account<'a>> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnableMouseCapture)?;
     let mut selected: usize = 0;
     loop {
-        println!("Choose an account ↓↑↲");
+        //https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
+        println!("Choose an account ⯅⯆ ⮠");
         for (index, account) in ACCOUNTS.iter().enumerate() {
-            let selected = index == selected;
-            let cursor = if selected { '>' } else { ' ' };
+            let cursor = if index == selected { '⯈' } else { ' ' };
             println!("{} {} {}", cursor, index, account);
         }
-
         // Blocking read
         let event = read()?;
         if let Event::Key(KeyEvent {
@@ -110,5 +109,5 @@ pub fn choose_account_from_command_line() -> Result<Account> {
     execute!(stdout, DisableMouseCapture)?;
     disable_raw_mode()?;
 
-    Ok(ACCOUNTS[selected])
+    Ok(&ACCOUNTS[selected])
 }
