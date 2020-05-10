@@ -1,8 +1,10 @@
 extern crate derive_more;
-use derive_more::{Display};
+use derive_more::Display;
 
 use crossterm::{
-    event::{read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent},
+    event::{
+        read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
     Result,
@@ -10,7 +12,7 @@ use crossterm::{
 use std::io::{stdout, Write};
 use std::{cmp, fmt};
 
-#[derive(Debug, Display)]
+#[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum Apartment {
     Electricity,
     Rent,
@@ -25,15 +27,15 @@ pub enum Apartment {
 //     }
 // }
 
-#[derive(Debug, Display)]
-pub enum Expenses<'a> {
+#[derive(Debug, Clone, Copy, Display, PartialEq)]
+pub enum Expenses {
     Maestro,
     Rest,
     #[display(fmt = "Apartement::{}", _0)]
-    Apartment(&'a Apartment),
+    Apartment(Apartment),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Equity {
     OpeningBalances,
 }
@@ -44,25 +46,29 @@ impl<'a> fmt::Display for Equity {
     }
 }
 
-#[derive(Debug, Display)]
-pub enum Account<'a> {
+#[derive(Debug, Clone, Copy, Display, PartialEq)]
+pub enum Account {
     #[display(fmt = "Expenses::{}", _0)]
-    Expenses(&'a Expenses<'a>),
+    Expenses(Expenses),
     #[display(fmt = "Equity::{}", _0)]
-    Equity(&'a Equity),
+    Equity(Equity),
 }
 
 pub const ACCOUNTS: [Account; 3] = [
-    Account::Expenses(&Expenses::Maestro),
-    Account::Expenses(&Expenses::Apartment(&Apartment::Electricity)),
-    Account::Expenses(&Expenses::Rest),
+    Account::Expenses(Expenses::Maestro),
+    Account::Expenses(Expenses::Apartment(Apartment::Electricity)),
+    Account::Expenses(Expenses::Rest),
 ];
 
-pub fn choose_account_from_command_line<'a> () -> Result<&'a Account<'a>> {
+pub fn choose_account_from_command_line<'a>(initial_account: Account) -> Result<Account> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnableMouseCapture)?;
     let mut selected: usize = 0;
+    let found_index_o =  ACCOUNTS.iter().position(|&a| a == initial_account);
+    if let Some(found_index) = found_index_o {
+        selected = found_index;
+    }
     loop {
         //https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
         println!("Choose an account ⯅⯆ ⮠");
@@ -72,29 +78,45 @@ pub fn choose_account_from_command_line<'a> () -> Result<&'a Account<'a>> {
         }
         // Blocking read
         let event = read()?;
-        if let Event::Key(KeyEvent {
-            code: KeyCode::Char(value),
-            ..
-        }) = event
-        {
-            if let Some(val_dig) = value.to_digit(10) {
-                if (val_dig as usize) < ACCOUNTS.len() && val_dig > 0 {
-                    selected = val_dig as usize;
+        match event {
+            Event::Key(KeyEvent {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::CONTROL
+            }) => {
+               panic!("user chose ctrl-c")
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Char(value),
+                ..
+            }) => {
+                if let Some(val_dig) = value.to_digit(10) {
+                    if (val_dig as usize) < ACCOUNTS.len() && val_dig > 0 {
+                        selected = val_dig as usize
+                    }
                 }
             }
-        }
-        if event == Event::Key(KeyCode::Up.into()) {
-            selected = if selected > 0 { selected - 1 } else { selected }
-        }
-        if event == Event::Key(KeyCode::Down.into()) {
-            selected = cmp::min(ACCOUNTS.len() - 1, selected + 1);
-        }
-        if event == Event::Key(KeyCode::Enter.into()) {
-            break;
+            Event::Key(KeyEvent {
+                code: KeyCode::Up, ..
+            }) => {
+                selected = cmp::max(0, selected - 1);
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Down,
+                ..
+            }) => {
+                selected = cmp::min(ACCOUNTS.len() - 1, selected + 1);
+            }
+            Event::Key(KeyEvent {
+                code: KeyCode::Enter,
+                ..
+            }) => break,
+            _ => {
+                println!("hohih");
+            }
         }
     }
     execute!(stdout, DisableMouseCapture)?;
     disable_raw_mode()?;
 
-    Ok(&ACCOUNTS[selected])
+    Ok(ACCOUNTS[selected])
 }

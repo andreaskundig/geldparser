@@ -2,10 +2,11 @@
 //!
 //! cargo run --example event-read
 
-use geldparser::accounts::{choose_account_from_command_line};
+use geldparser::accounts::{choose_account_from_command_line, Apartment, Expenses, Account};
 
-fn main(){
-    match choose_account_from_command_line(){
+fn main() {
+    let account = Account::Expenses(Expenses::Apartment(Apartment::Electricity));
+    match choose_account_from_command_line(account) {
         Err(why) => println!("Error: {}", why),
         Ok(chosen) => println!("You chose: {}", chosen),
     };

@@ -3,6 +3,7 @@ extern crate lazy_static;
 extern crate chrono;
 extern crate regex;
 extern crate rust_decimal;
+use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
 use chrono::NaiveDate;
 use mt940::{parse_mt940, sanitizers};
@@ -35,7 +36,18 @@ pub fn run(config: Config) {
             if date < start_date {
                 continue;
             }
-            println!("{}\n", Transaction::new(&statement));
+            let owner_info = extract_info_to_owner(statement).unwrap_or("");
+            let mut recipient = extract_recipient(owner_info);
+            if config.interactive {
+                let init_acc = recipient.account;
+                println!(";;{}\n", remove_newlines(owner_info));
+                let account_o = choose_account_from_command_line(init_acc);
+                let account = account_o.expect("Choosing error");
+                recipient = Recipient{name: owner_info, account};
+                println!(";;{}\n", account);
+            }
+            let transaction = Transaction::new(statement, recipient);
+            println!("{}\n", transaction);
         }
     }
 }
@@ -50,35 +62,34 @@ struct Transaction<'a> {
 
 struct Recipient<'a> {
     name: &'a str,
-    account: Account<'static>,
+    account: Account,
 }
 
 impl<'a> Transaction<'a> {
     fn new_opening_balance(message: &'a mt940::Message) -> Transaction<'a> {
         let recipient = Recipient {
             name: "Checking Balance",
-            account: Equity(&OpeningBalances),
+            account: Equity(OpeningBalances),
         };
         let info_to_owner = &message.information_to_account_owner;
         Transaction {
             date: &message.opening_balance.date,
             amount: &message.opening_balance.amount,
-            recipient: recipient,
+            recipient,
             details: Option::None,
             info_to_owner: info_to_owner.as_ref().map(String::as_str),
         }
     }
-    fn new(statement: &'a mt940::StatementLine) -> Transaction<'a> {
-        let recipient = extract_recipient(statement);
+    fn new(statement: &'a mt940::StatementLine, recipient: Recipient<'a>) -> Transaction<'a> {
         let entry_date = statement.entry_date.as_ref();
         let date = entry_date.unwrap_or(&statement.value_date);
         let info_to_owner = extract_info_to_owner(statement);
         Transaction {
-            date: date,
+            date,
+            recipient,
+            info_to_owner,
             amount: &statement.amount,
-            recipient: recipient,
             details: statement.supplementary_details.as_ref().map(String::as_str),
-            info_to_owner: info_to_owner,
         }
     }
 }
@@ -101,17 +112,14 @@ impl<'a> fmt::Display for Transaction<'a> {
     }
 }
 
-fn extract_recipient(statement: &mt940::StatementLine) -> Recipient {
-    let owner_info = extract_info_to_owner(statement);
+fn extract_recipient(owner_info: &str) -> Recipient {
     let _extractors: Vec<fn(&str) -> Option<Recipient>> = vec![
-        extract_maestro_transaction,
-        extract_sig_transaction,
-        extract_rest_transaction,
+        extract_maestro_recipient,
+        extract_sig_recipient,
     ];
 
-    owner_info
-        .and_then({ |oi| _extractors.iter().find_map({ |f| f(oi) }) })
-        .unwrap()
+    _extractors.iter().find_map({ |f| f(owner_info) })
+        .unwrap_or_else({|| rest_recipient(owner_info)})
 }
 
 fn extract_info_to_owner(statement: &mt940::StatementLine) -> Option<&str> {
@@ -120,7 +128,7 @@ fn extract_info_to_owner(statement: &mt940::StatementLine) -> Option<&str> {
     op_string_ref.map(String::as_str)
 }
 
-fn extract_maestro_transaction(owner_info: &str) -> Option<Recipient> {
+fn extract_maestro_recipient(owner_info: &str) -> Option<Recipient> {
     // https://rust-lang-nursery.github.io/rust-cookbook/text/regex.html
     lazy_static! {
         static ref MAESTRO: Regex =
@@ -130,12 +138,12 @@ fn extract_maestro_transaction(owner_info: &str) -> Option<Recipient> {
     c.and_then(|cap| {
         cap.get(1).map(|m| Recipient {
             name: m.as_str(),
-            account: Expenses(&Maestro),
+            account: Expenses(Maestro),
         })
     })
 }
 
-fn extract_sig_transaction(owner_info: &str) -> Option<Recipient> {
+fn extract_sig_recipient(owner_info: &str) -> Option<Recipient> {
     lazy_static! {
         static ref SIG: Regex = Regex::new(r"Services Industriels de Geneve").unwrap();
     }
@@ -143,18 +151,18 @@ fn extract_sig_transaction(owner_info: &str) -> Option<Recipient> {
     if SIG.is_match(owner_info) {
         Some(Recipient {
             name: "Services Industriels de Geneve",
-            account: Expenses(&Apartment(&Electricity)),
+            account: Expenses(Apartment(Electricity)),
         })
     } else {
         None
     }
 }
 
-fn extract_rest_transaction(owner_info: &str) -> Option<Recipient> {
-    Some(Recipient {
+fn rest_recipient(owner_info: &str) -> Recipient {
+    Recipient {
         name: owner_info,
-        account: Expenses(&Rest),
-    })
+        account: Expenses(Rest),
+    }
 }
 
 /* Cow
@@ -171,14 +179,20 @@ fn remove_newlines(text: &str) -> Cow<str> {
 
 pub struct Config {
     pub filename: String,
+    pub interactive: bool,
 }
 
 impl Config {
     pub fn new(args: &[String]) -> Config {
         let mut filename = String::from("../bewegungen/2019.mt940");
-        if args.len() > 1 {
-            filename = args[1].clone();
+        let interactive = args.iter().find(|&arg| &arg == &"-i").is_some();
+        let filename_index = if interactive { 2 } else { 1 };
+        if args.len() > filename_index {
+            filename = args[filename_index].clone();
         }
-        Config { filename }
+        Config {
+            filename,
+            interactive,
+        }
     }
 }
