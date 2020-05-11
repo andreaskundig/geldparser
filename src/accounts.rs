@@ -18,15 +18,6 @@ pub enum Apartment {
     Rent,
 }
 
-// impl<'a> fmt::Display for Apartment {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         match *self {
-//             Apartment::Electricity => write!(f, "Electricity"),
-//             Apartment::Rent => write!(f, "Rent"),
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum Expenses {
     Maestro,

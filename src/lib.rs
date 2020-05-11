@@ -10,7 +10,8 @@ use mt940::{parse_mt940, sanitizers};
 use regex::Regex;
 use rust_decimal::Decimal;
 use std::{borrow::Cow, fmt, fs};
-
+use std::io::stdout;
+use crossterm::{ExecutableCommand,terminal::{Clear, ClearType}};
 pub mod accounts;
 
 pub fn run(config: Config) {
@@ -40,6 +41,7 @@ pub fn run(config: Config) {
             let mut recipient = extract_recipient(owner_info);
             if config.interactive {
                 let init_acc = recipient.account;
+                stdout().execute(Clear(ClearType::All)).expect("oh");
                 println!(";;{}\n", remove_newlines(owner_info));
                 let account_o = choose_account_from_command_line(init_acc);
                 let account = account_o.expect("Choosing error");
