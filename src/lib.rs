@@ -10,8 +10,6 @@ use mt940::{parse_mt940, sanitizers};
 use regex::Regex;
 use rust_decimal::Decimal;
 use std::{borrow::Cow, fmt, fs};
-use std::io::stdout;
-use crossterm::{ExecutableCommand,terminal::{Clear, ClearType}};
 pub mod accounts;
 
 pub fn run(config: Config) {
@@ -41,11 +39,13 @@ pub fn run(config: Config) {
             let mut recipient = extract_recipient(owner_info);
             if config.interactive {
                 let init_acc = recipient.account;
-                stdout().execute(Clear(ClearType::All)).expect("oh");
-                println!(";;{}\n", remove_newlines(owner_info));
-                let account_o = choose_account_from_command_line(init_acc);
+                let account_o =
+                    choose_account_from_command_line(init_acc, owner_info);
                 let account = account_o.expect("Choosing error");
-                recipient = Recipient{name: owner_info, account};
+                recipient = Recipient {
+                    name: owner_info,
+                    account,
+                };
                 println!(";;{}\n", account);
             }
             let transaction = Transaction::new(statement, recipient);
@@ -115,13 +115,13 @@ impl<'a> fmt::Display for Transaction<'a> {
 }
 
 fn extract_recipient(owner_info: &str) -> Recipient {
-    let _extractors: Vec<fn(&str) -> Option<Recipient>> = vec![
-        extract_maestro_recipient,
-        extract_sig_recipient,
-    ];
+    let _extractors: Vec<fn(&str) -> Option<Recipient>> =
+        vec![extract_maestro_recipient, extract_sig_recipient];
 
-    _extractors.iter().find_map({ |f| f(owner_info) })
-        .unwrap_or_else({|| rest_recipient(owner_info)})
+    _extractors
+        .iter()
+        .find_map({ |f| f(owner_info) })
+        .unwrap_or_else({ || rest_recipient(owner_info) })
 }
 
 fn extract_info_to_owner(statement: &mt940::StatementLine) -> Option<&str> {

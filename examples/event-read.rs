@@ -6,7 +6,7 @@ use geldparser::accounts::{choose_account_from_command_line, Apartment, Expenses
 
 fn main() {
     let account = Account::Expenses(Expenses::Apartment(Apartment::Electricity));
-    match choose_account_from_command_line(account) {
+    match choose_account_from_command_line(account, "hi") {
         Err(why) => println!("Error: {}", why),
         Ok(chosen) => println!("You chose: {}", chosen),
     };

@@ -6,11 +6,11 @@ use crossterm::{
         read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
     },
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
     Result,
 };
 use std::io::{stdout, Write};
-use std::{cmp, fmt};
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum Apartment {
@@ -51,31 +51,36 @@ pub const ACCOUNTS: [Account; 3] = [
     Account::Expenses(Expenses::Rest),
 ];
 
-pub fn choose_account_from_command_line<'a>(initial_account: Account) -> Result<Account> {
+pub fn choose_account_from_command_line<'a>(
+    initial_account: Account,
+    owner_info: &str,
+) -> Result<Account> {
+    
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnableMouseCapture)?;
     let mut selected: usize = 0;
-    let found_index_o =  ACCOUNTS.iter().position(|&a| a == initial_account);
+    let found_index_o = ACCOUNTS.iter().position(|&a| a == initial_account);
     if let Some(found_index) = found_index_o {
         selected = found_index;
     }
     loop {
+        
+    execute!(stdout, Clear(ClearType::All))?;
         //https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
         println!("Choose an account ⯅⯆ ⮠");
         for (index, account) in ACCOUNTS.iter().enumerate() {
             let cursor = if index == selected { '⯈' } else { ' ' };
             println!("{} {} {}", cursor, index, account);
         }
+        println!("\n{}", owner_info);
         // Blocking read
         let event = read()?;
         match event {
             Event::Key(KeyEvent {
                 code: KeyCode::Char('c'),
-                modifiers: KeyModifiers::CONTROL
-            }) => {
-               panic!("user chose ctrl-c")
-            }
+                modifiers: KeyModifiers::CONTROL,
+            }) => panic!("user chose ctrl-c"),
             Event::Key(KeyEvent {
                 code: KeyCode::Char(value),
                 ..
@@ -88,14 +93,15 @@ pub fn choose_account_from_command_line<'a>(initial_account: Account) -> Result<
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Up, ..
-            }) => {
-                selected = cmp::max(0, selected - 1);
+            }) if selected  > 0 => {
+                selected = selected - 1;
+                println!("selected {}",selected);
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Down,
                 ..
-            }) => {
-                selected = cmp::min(ACCOUNTS.len() - 1, selected + 1);
+            }) if selected < ACCOUNTS.len() - 1 => {
+                selected = selected + 1;
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Enter,
