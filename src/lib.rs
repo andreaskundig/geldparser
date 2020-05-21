@@ -6,17 +6,19 @@ extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
 use chrono::NaiveDate;
-use mt940::{parse_mt940, sanitizers};
+use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
 use rust_decimal::Decimal;
-use std::{borrow::Cow, fmt, fs};
+use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*};
 pub mod accounts;
 
-pub fn run(config: Config) {
-    let filename = config.filename;
-    println!("; {:?}", filename);
-
-    let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
+// pub fn run(config: Config){
+pub fn run(config: Config) -> std::io::Result<()> {
+    let input_filename = &config.input_filename;
+    let mut output_file = File::create(&config.output_filename)?;
+    println!("; {:?}", input_filename);
+    writeln!(output_file, "; {:?}\n", input_filename)?;
+    let contents = fs::read_to_string(input_filename)?;
 
     let sanitized = sanitizers::sanitize(&contents[..]);
     let messages = parse_mt940(&sanitized[..]).unwrap();
@@ -26,32 +28,46 @@ pub fn run(config: Config) {
     for (index, message) in (&messages).iter().enumerate() {
         // for message in &messages {
         if index == 0 {
-            println!("{}\n", Transaction::new_opening_balance(&message));
+            writeln!(
+                output_file,
+                "{}\n",
+                Transaction::new_opening_balance(&message)
+            )?;
         }
 
-        //let statement = &message.statement_lines[0];
-        for statement in &message.statement_lines {
-            let date = statement.entry_date.unwrap_or(statement.value_date);
-            if date < start_date {
-                continue;
-            }
-            let owner_info = extract_info_to_owner(statement).unwrap_or("");
-            let mut recipient = extract_recipient(owner_info);
-            if config.interactive {
-                let init_acc = recipient.account;
-                let account_o =
-                    choose_account_from_command_line(init_acc, owner_info);
-                let account = account_o.expect("Choosing error");
-                recipient = Recipient {
-                    name: owner_info,
-                    account,
-                };
-                println!(";;{}\n", account);
-            }
-            let transaction = Transaction::new(statement, recipient);
-            println!("{}\n", transaction);
-        }
+        let lines = &message.statement_lines;
+        write_lines(&mut output_file, lines, &config, &start_date)?;
     }
+    Ok(())
+}
+
+fn write_lines(
+    output_file: &mut File,
+    lines: &Vec<StatementLine>,
+    config: &Config,
+    start_date: &NaiveDate,
+) -> std::io::Result<()> {
+    for statement in lines {
+        let date = &statement.entry_date.unwrap_or(statement.value_date);
+        if date < start_date {
+            continue;
+        }
+        let owner_info = extract_info_to_owner(statement).unwrap_or("");
+        let mut recipient = extract_recipient(owner_info);
+        if config.interactive {
+            let init_acc = recipient.account;
+            let account_o = choose_account_from_command_line(init_acc, owner_info);
+            let account = account_o.expect("Choosing error");
+            recipient = Recipient {
+                name: owner_info,
+                account,
+            };
+            println!(";;{}\n", account);
+        }
+        let transaction = Transaction::new(statement, recipient);
+        writeln!(output_file, "{}\n", transaction)?;
+    }
+    Ok(())
 }
 
 struct Transaction<'a> {
@@ -180,21 +196,24 @@ fn remove_newlines(text: &str) -> Cow<str> {
 }
 
 pub struct Config {
-    pub filename: String,
+    pub input_filename: String,
+    pub output_filename: String,
     pub interactive: bool,
 }
 
 impl Config {
     pub fn new(args: &[String]) -> Config {
-        let mut filename = String::from("../bewegungen/2019.mt940");
+        let mut input_filename = String::from("../bewegungen/2019.mt940");
+        let output_filename = String::from("./output.ledger");
         let interactive = args.iter().find(|&arg| &arg == &"-i").is_some();
         let filename_index = if interactive { 2 } else { 1 };
         if args.len() > filename_index {
-            filename = args[filename_index].clone();
+            input_filename = args[filename_index].clone();
         }
         Config {
-            filename,
+            input_filename,
             interactive,
+            output_filename,
         }
     }
 }

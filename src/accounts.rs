@@ -2,6 +2,7 @@ extern crate derive_more;
 use derive_more::Display;
 
 use crossterm::{
+    cursor::MoveTo,
     event::{
         read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
     },
@@ -9,8 +10,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
     Result,
 };
-use std::io::{stdout, Write};
 use std::fmt;
+use std::io::{stdout, Write};
 
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum Apartment {
@@ -55,7 +56,6 @@ pub fn choose_account_from_command_line<'a>(
     initial_account: Account,
     owner_info: &str,
 ) -> Result<Account> {
-    
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnableMouseCapture)?;
@@ -65,15 +65,16 @@ pub fn choose_account_from_command_line<'a>(
         selected = found_index;
     }
     loop {
-        
-    execute!(stdout, Clear(ClearType::All))?;
+        execute!(stdout, Clear(ClearType::All), MoveTo(0,9))?;
         //https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
         println!("Choose an account ⯅⯆ ⮠");
         for (index, account) in ACCOUNTS.iter().enumerate() {
-            let cursor = if index == selected { '⯈' } else { ' ' };
+            let cursor = if index == selected { ">" } else { " " };
             println!("{} {} {}", cursor, index, account);
         }
-        println!("\n{}", owner_info);
+        execute!(stdout,  MoveTo(0,0))?;
+        println!("{}", owner_info);
+        println!("\n{}", ACCOUNTS[selected]);
         // Blocking read
         let event = read()?;
         match event {
@@ -86,16 +87,16 @@ pub fn choose_account_from_command_line<'a>(
                 ..
             }) => {
                 if let Some(val_dig) = value.to_digit(10) {
-                    if (val_dig as usize) < ACCOUNTS.len() && val_dig > 0 {
+                    if (val_dig as usize) < ACCOUNTS.len() {
                         selected = val_dig as usize
                     }
                 }
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Up, ..
-            }) if selected  > 0 => {
+            }) if selected > 0 => {
                 selected = selected - 1;
-                println!("selected {}",selected);
+                println!("selected {}", selected);
             }
             Event::Key(KeyEvent {
                 code: KeyCode::Down,
