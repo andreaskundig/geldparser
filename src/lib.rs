@@ -11,6 +11,7 @@ use regex::Regex;
 use rust_decimal::Decimal;
 use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*};
 pub mod accounts;
+pub mod files;
 
 // pub fn run(config: Config){
 pub fn run(config: Config) -> std::io::Result<()> {

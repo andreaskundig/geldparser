@@ -6,20 +6,14 @@ use csv::ReaderBuilder;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
-use std::fs;
 use std::fs::File;
-use std::io;
 use std::process;
+
+use geldparser::files::print_files;
 
 // The `main` function is where your program starts executing.
 fn main() -> Result<(), Box<dyn Error>> {
-    let paths = fs::read_dir("../bewegungen/pain")?
-        .map(|res| res.map(|e| e.file_name()))
-        .collect::<Result<Vec<_>, io::Error>>()?;
-
-    for path in paths {
-        println!("Name: {:?}", path)
-    }
+    print_files()?;
     if let Err(err) = run() {
         println!("{}", err);
         process::exit(1);
