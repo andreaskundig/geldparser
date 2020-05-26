@@ -1,7 +1,7 @@
 extern crate csv;
 
 use chrono::NaiveDate;
-use csv::ReaderBuilder;
+use csv::{ReaderBuilder, StringRecord};
 use std::error::Error;
 use std::fs;
 use std::fs::File;
@@ -16,16 +16,12 @@ pub fn print_files() -> Result<(), Box<dyn Error>> {
             _ => false,
         })
         .collect::<Result<Vec<_>, io::Error>>()?;
-
-    for path in &paths {
-        println!("Name: {:?}", path)
-    }
     build_map(&paths)?;
     Ok(())
 }
 
 fn build_map(paths: &Vec<OsString>) -> Result<(), Box<dyn Error>> {
-    // let mut date_to_payment = HashMap::new();
+    let mut date_to_payment: HashMap<NaiveDate, Vec<StringRecord>> = HashMap::new();
 
     for path in paths {
         let file = File::open(&path)?;
@@ -34,9 +30,17 @@ fn build_map(paths: &Vec<OsString>) -> Result<(), Box<dyn Error>> {
             let record = result?;
             let date_string = &record[0];
             let date = NaiveDate::parse_from_str(date_string, "%d.%m.%Y")?;
-            println!("{:?} {:?}", date, record);
+            // println!("{:?} {:?}", date, record);
+            match date_to_payment.get_mut(&date) {
+                Some(records) => records.push(record),
+                None => {
+                    date_to_payment.insert(date, vec![record]);
+                    ()
+                }
+            }
         }
         println!("Name: {:?}", path);
     }
+    println!("Map: {:?}", date_to_payment);
     Ok(())
 }
