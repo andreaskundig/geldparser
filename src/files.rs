@@ -20,7 +20,7 @@ pub fn print_files() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn build_map(paths: &Vec<OsString>) -> Result<(), Box<dyn Error>> {
+fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecord>>, Box<dyn Error>> {
     let mut date_to_payment: HashMap<NaiveDate, Vec<StringRecord>> = HashMap::new();
 
     for path in paths {
@@ -42,5 +42,5 @@ fn build_map(paths: &Vec<OsString>) -> Result<(), Box<dyn Error>> {
         println!("Name: {:?}", path);
     }
     println!("Map: {:?}", date_to_payment);
-    Ok(())
+    Ok(date_to_payment)
 }
