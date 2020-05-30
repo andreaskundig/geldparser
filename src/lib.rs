@@ -2,6 +2,7 @@
 extern crate lazy_static;
 extern crate chrono;
 extern crate regex;
+extern crate failure;
 extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
@@ -9,12 +10,17 @@ use chrono::NaiveDate;
 use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
 use rust_decimal::Decimal;
-use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*};
+use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*,
+          //error::Error
+};
 pub mod accounts;
 pub mod files;
+use crate::files::ebanking_payments;
+use failure::Error;
 
 // pub fn run(config: Config){
-pub fn run(config: Config) -> std::io::Result<()> {
+pub fn run(config: Config) -> Result<(), Error> {
+    let date_to_payment = ebanking_payments()?;
     let input_filename = &config.input_filename;
     let mut output_file = File::create(&config.output_filename)?;
     println!("; {:?}", input_filename);
@@ -22,7 +28,7 @@ pub fn run(config: Config) -> std::io::Result<()> {
     let contents = fs::read_to_string(input_filename)?;
 
     let sanitized = sanitizers::sanitize(&contents[..]);
-    let messages = parse_mt940(&sanitized[..]).unwrap();
+    let messages = parse_mt940(&sanitized[..])?;
 
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 

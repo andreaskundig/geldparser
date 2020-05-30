@@ -1,14 +1,16 @@
 extern crate csv;
+extern crate failure;
 
 use chrono::NaiveDate;
 use csv::{ReaderBuilder, StringRecord};
-use std::error::Error;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::{collections::HashMap, ffi::OsString};
+//https://boats.gitlab.io/failure/intro.html
+use failure::Error;
 
-pub fn print_files() -> Result<(), Box<dyn Error>> {
+pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<StringRecord>>, Error> {
     let paths = fs::read_dir("../bewegungen/pain")?
         .map(|res| res.map(|e| e.path().into_os_string()))
         .filter(|n| match n {
@@ -16,11 +18,11 @@ pub fn print_files() -> Result<(), Box<dyn Error>> {
             _ => false,
         })
         .collect::<Result<Vec<_>, io::Error>>()?;
-    build_map(&paths)?;
-    Ok(())
+    build_map(&paths)
 }
 
-fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecord>>, Box<dyn Error>> {
+fn build_map(paths: &Vec<OsString>) ->
+    Result<HashMap<NaiveDate, Vec<StringRecord>>, Error> {
     let mut date_to_payment: HashMap<NaiveDate, Vec<StringRecord>> = HashMap::new();
 
     for path in paths {
@@ -41,6 +43,5 @@ fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecor
         }
         println!("Name: {:?}", path);
     }
-    println!("Map: {:?}", date_to_payment);
     Ok(date_to_payment)
 }
