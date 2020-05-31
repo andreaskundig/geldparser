@@ -9,6 +9,7 @@ use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
 use chrono::NaiveDate;
 use mt940::{parse_mt940, sanitizers, StatementLine};
+use mt940::Message;
 use regex::Regex;
 use rust_decimal::Decimal;
 use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*,
@@ -27,11 +28,8 @@ pub fn run(config: Config) -> Result<()> {
     let mut output_file = File::create(&config.output_filename)?;
     println!("; {:?}", input_filename);
     writeln!(output_file, "; {:?}\n", input_filename)?;
-    let contents = fs::read_to_string(input_filename)?;
-
-    let sanitized = sanitizers::sanitize(&contents[..]);
-    let messages = parse_mt940(&sanitized[..]).map_err(|e| e.compat())?;
-
+    let messages = parse_messages(&input_filename)?;
+    
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
     for (index, message) in (&messages).iter().enumerate() {
@@ -48,6 +46,12 @@ pub fn run(config: Config) -> Result<()> {
         write_lines(&mut output_file, lines, &config, &start_date)?;
     }
     Ok(())
+}
+
+pub fn parse_messages(input_filename: &str) -> Result<Vec<Message>> {
+    let contents = fs::read_to_string(input_filename)?;
+    let sanitized = sanitizers::sanitize(&contents[..]);
+    parse_mt940(&sanitized[..]).map_err(|e| From::from(e.compat()))
 }
 
 fn write_lines(
@@ -93,7 +97,7 @@ struct Recipient<'a> {
 }
 
 impl<'a> Transaction<'a> {
-    fn new_opening_balance(message: &'a mt940::Message) -> Transaction<'a> {
+    fn new_opening_balance(message: &'a Message) -> Transaction<'a> {
         let recipient = Recipient {
             name: "Checking Balance",
             account: Equity(OpeningBalances),
