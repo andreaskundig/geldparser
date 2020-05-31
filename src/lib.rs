@@ -4,6 +4,7 @@ extern crate chrono;
 extern crate regex;
 extern crate failure;
 extern crate rust_decimal;
+extern crate anyhow;
 use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
 use chrono::NaiveDate;
@@ -16,10 +17,11 @@ use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*,
 pub mod accounts;
 pub mod files;
 use crate::files::ebanking_payments;
-use failure::Error;
+use failure::Fail;
+use anyhow::Result;
 
 // pub fn run(config: Config){
-pub fn run(config: Config) -> Result<(), Error> {
+pub fn run(config: Config) -> Result<()> {
     let date_to_payment = ebanking_payments()?;
     let input_filename = &config.input_filename;
     let mut output_file = File::create(&config.output_filename)?;
@@ -28,7 +30,7 @@ pub fn run(config: Config) -> Result<(), Error> {
     let contents = fs::read_to_string(input_filename)?;
 
     let sanitized = sanitizers::sanitize(&contents[..]);
-    let messages = parse_mt940(&sanitized[..])?;
+    let messages = parse_mt940(&sanitized[..]).map_err(|e| e.compat())?;
 
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
