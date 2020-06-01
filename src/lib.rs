@@ -12,8 +12,7 @@ use mt940::{parse_mt940, sanitizers, StatementLine};
 use mt940::Message;
 use regex::Regex;
 use rust_decimal::Decimal;
-use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*,
-          //error::Error
+use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*,slice::Iter
 };
 pub mod accounts;
 pub mod files;
@@ -46,6 +45,27 @@ pub fn run(config: Config) -> Result<()> {
         write_lines(&mut output_file, lines, &config, &start_date)?;
     }
     Ok(())
+}
+// https://doc.rust-lang.org/std/iter/index.html#implementing-iterator
+struct DayMessages<'a>{
+    peeked_message: Option<&'a Message>,
+    messages: Iter<'a,  Message>,
+}
+
+impl<'a> DayMessages<'a>{
+    fn new(messages: &'a Vec<Message>) ->  DayMessages<'a>{
+        DayMessages{peeked_message: None,
+                    messages: messages.iter()
+        }
+    }
+}
+
+impl <'a> Iterator for DayMessages<'a>{
+    type Item = Vec<&'a Message>;
+    fn next(&mut self) -> Option<Self::Item>{
+        let message = self.messages.next()?;
+        Some(vec![message])
+    }
 }
 
 pub fn parse_messages(input_filename: &str) -> Result<Vec<Message>> {
