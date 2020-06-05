@@ -39,13 +39,16 @@ pub fn run(config: Config) -> Result<()> {
         )?;
     }
 
-    for stmtline in stmtlines_after(&start_date, &messages) {
-        write_stmtline(&mut output_file, stmtline, &config)?;
-    }
-    // for (date, stmtlines_group) in stmtlines_after(&start_date, &messages).group_by(|s| s.value_date) {
-    //     for stmtline in stmtlines_group {
+    // for stmtline in stmtlines_after(&start_date, &messages) {
     //     write_stmtline(&mut output_file, stmtline, &config)?;
     // }
+    let grouped = &stmtlines_after_grouped(&start_date, &messages);
+    for (_date, stmtlines_group) in grouped {
+        
+        for stmtline in stmtlines_group {
+            write_stmtline(&mut output_file, stmtline, &config)?;
+        }
+    }
     Ok(())
 }
 
