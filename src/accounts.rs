@@ -65,14 +65,14 @@ pub fn choose_account_from_command_line<'a>(
         selected = found_index;
     }
     loop {
-        execute!(stdout, Clear(ClearType::All), MoveTo(0,9))?;
+        execute!(stdout, Clear(ClearType::All), MoveTo(0, 9))?;
         //https://www.key-shortcut.com/en/writing-systems/35-symbols/arrows/
         println!("Choose an account ⯅⯆ ⮠");
         for (index, account) in ACCOUNTS.iter().enumerate() {
             let cursor = if index == selected { ">" } else { " " };
             println!("{} {} {}", cursor, index, account);
         }
-        execute!(stdout,  MoveTo(0,0))?;
+        execute!(stdout, MoveTo(0, 0))?;
         println!("{}", owner_info);
         println!("\n{}", ACCOUNTS[selected]);
         // Blocking read

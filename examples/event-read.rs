@@ -2,7 +2,7 @@
 //!
 //! cargo run --example event-read
 
-use geldparser::accounts::{choose_account_from_command_line, Apartment, Expenses, Account};
+use geldparser::accounts::{choose_account_from_command_line, Account, Apartment, Expenses};
 
 fn main() {
     let account = Account::Expenses(Expenses::Apartment(Apartment::Electricity));

@@ -1,71 +1,52 @@
 #[macro_use]
 extern crate lazy_static;
-extern crate chrono;
-extern crate regex;
-extern crate failure;
-extern crate rust_decimal;
 extern crate anyhow;
+extern crate chrono;
+extern crate failure;
+extern crate regex;
+extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
 use chrono::NaiveDate;
-use mt940::{parse_mt940, sanitizers, StatementLine};
 use mt940::Message;
+use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
 use rust_decimal::Decimal;
-use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*,slice::Iter
-};
+use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*};
 pub mod accounts;
 pub mod files;
 use crate::files::ebanking_payments;
-use failure::Fail;
 use anyhow::Result;
+use failure::Fail;
+use itertools::{Itertools, structs::GroupBy};
 
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
-    let date_to_payment = ebanking_payments()?;
+    let _date_to_payment = ebanking_payments()?;
     let input_filename = &config.input_filename;
     let mut output_file = File::create(&config.output_filename)?;
-    println!("; {:?}", input_filename);
+    println!("; {} -> {}", input_filename, &config.output_filename);
     writeln!(output_file, "; {:?}\n", input_filename)?;
     let messages = parse_messages(&input_filename)?;
-    
+
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
-    for (index, message) in (&messages).iter().enumerate() {
-        // for message in &messages {
-        if index == 0 {
-            writeln!(
-                output_file,
-                "{}\n",
-                Transaction::new_opening_balance(&message)
-            )?;
-        }
-
-        let lines = &message.statement_lines;
-        write_lines(&mut output_file, lines, &config, &start_date)?;
+    if let Some(opening_message) = first_after(&start_date, &messages) {
+        writeln!(
+            output_file,
+            "{}\n",
+            Transaction::new_opening_balance(opening_message)
+        )?;
     }
+
+    for stmtline in stmtlines_after(&start_date, &messages) {
+        write_stmtline(&mut output_file, stmtline, &config)?;
+    }
+    // for (date, stmtlines_group) in stmtlines_after(&start_date, &messages).group_by(|s| s.value_date) {
+    //     for stmtline in stmtlines_group {
+    //     write_stmtline(&mut output_file, stmtline, &config)?;
+    // }
     Ok(())
-}
-// https://doc.rust-lang.org/std/iter/index.html#implementing-iterator
-struct DayMessages<'a>{
-    peeked_message: Option<&'a Message>,
-    messages: Iter<'a,  Message>,
-}
-
-impl<'a> DayMessages<'a>{
-    fn new(messages: &'a Vec<Message>) ->  DayMessages<'a>{
-        DayMessages{peeked_message: None,
-                    messages: messages.iter()
-        }
-    }
-}
-
-impl <'a> Iterator for DayMessages<'a>{
-    type Item = Vec<&'a Message>;
-    fn next(&mut self) -> Option<Self::Item>{
-        let message = self.messages.next()?;
-        Some(vec![message])
-    }
 }
 
 pub fn parse_messages(input_filename: &str) -> Result<Vec<Message>> {
@@ -74,32 +55,68 @@ pub fn parse_messages(input_filename: &str) -> Result<Vec<Message>> {
     parse_mt940(&sanitized[..]).map_err(|e| From::from(e.compat()))
 }
 
-fn write_lines(
+pub fn first_after<'a>(
+    &opening_balance_date: &NaiveDate,
+    messages: &'a [Message],
+) -> Option<&'a Message> {
+    messages
+        .iter()
+        .find(|&m| m.opening_balance.date >= opening_balance_date)
+}
+
+// fn get_stmtline_value_date(stmtline: && StatementLine) -> NaiveDate{
+//     stmtline.value_date
+// }
+
+pub fn stmtlines_after_grouped<'a>(
+    start_date: &'a NaiveDate,
+    messages: &'a [Message],
+) -> GroupBy<&'a NaiveDate,
+             impl Iterator<Item = &'a StatementLine>,
+             // A closure that does not move, borrow,
+             // or otherwise access (capture) local variables
+             // is coercable to a function pointer (fn).
+             fn(& &'a StatementLine) -> &'a NaiveDate
+             // The other solution would be to box the closure
+             // like this: .group_by(Box::new(|s| &s.value_date))
+             // and declare this type instead of fn:
+             // Box<dyn Fn(& &'a StatementLine) -> &'a NaiveDate>
+             >
+{
+        stmtlines_after(start_date, messages)
+       .group_by(|s| &s.value_date)
+       // .group_by(get_stmtline_value_date)
+}
+
+pub fn stmtlines_after<'a>(
+    start_date: &'a NaiveDate,
+    messages: &'a [Message],
+) -> impl Iterator<Item = &'a StatementLine> {
+    messages
+        .iter()
+        .flat_map(|m| &m.statement_lines)
+        .filter(move |s| &s.value_date >= start_date)
+}
+
+fn write_stmtline(
     output_file: &mut File,
-    lines: &Vec<StatementLine>,
+    statement: &StatementLine,
     config: &Config,
-    start_date: &NaiveDate,
 ) -> std::io::Result<()> {
-    for statement in lines {
-        let date = &statement.entry_date.unwrap_or(statement.value_date);
-        if date < start_date {
-            continue;
-        }
-        let owner_info = extract_info_to_owner(statement).unwrap_or("");
-        let mut recipient = extract_recipient(owner_info);
-        if config.interactive {
-            let init_acc = recipient.account;
-            let account_o = choose_account_from_command_line(init_acc, owner_info);
-            let account = account_o.expect("Choosing error");
-            recipient = Recipient {
-                name: owner_info,
-                account,
-            };
-            println!(";;{}\n", account);
-        }
-        let transaction = Transaction::new(statement, recipient);
-        writeln!(output_file, "{}\n", transaction)?;
+    let owner_info = extract_info_to_owner(statement).unwrap_or("");
+    let mut recipient = extract_recipient(owner_info);
+    if config.interactive {
+        let init_acc = recipient.account;
+        let account_o = choose_account_from_command_line(init_acc, owner_info);
+        let account = account_o.expect("Choosing error");
+        recipient = Recipient {
+            name: owner_info,
+            account,
+        };
+        println!(";;{}\n", account);
     }
+    let transaction = Transaction::new(statement, recipient);
+    writeln!(output_file, "{}\n", transaction)?;
     Ok(())
 }
 
