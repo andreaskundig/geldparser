@@ -18,7 +18,7 @@ pub mod files;
 use crate::files::ebanking_payments;
 use anyhow::Result;
 use failure::Fail;
-use itertools::{Itertools, structs::GroupBy};
+use itertools::{structs::GroupBy, Itertools};
 
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
@@ -39,12 +39,9 @@ pub fn run(config: Config) -> Result<()> {
         )?;
     }
 
-    // for stmtline in stmtlines_after(&start_date, &messages) {
-    //     write_stmtline(&mut output_file, stmtline, &config)?;
-    // }
     let grouped = &stmtlines_after_grouped(&start_date, &messages);
     for (_date, stmtlines_group) in grouped {
-        
+        //TODO find ebanking lines, make detailed transactions
         for stmtline in stmtlines_group {
             write_stmtline(&mut output_file, stmtline, &config)?;
         }
@@ -74,21 +71,19 @@ pub fn first_after<'a>(
 pub fn stmtlines_after_grouped<'a>(
     start_date: &'a NaiveDate,
     messages: &'a [Message],
-) -> GroupBy<&'a NaiveDate,
-             impl Iterator<Item = &'a StatementLine>,
-             // A closure that does not move, borrow,
-             // or otherwise access (capture) local variables
-             // is coercable to a function pointer (fn).
-             fn(& &'a StatementLine) -> &'a NaiveDate
-             // The other solution would be to box the closure
-             // like this: .group_by(Box::new(|s| &s.value_date))
-             // and declare this type instead of fn:
-             // Box<dyn Fn(& &'a StatementLine) -> &'a NaiveDate>
-             >
-{
-        stmtlines_after(start_date, messages)
-       .group_by(|s| &s.value_date)
-       // .group_by(get_stmtline_value_date)
+) -> GroupBy<
+    &'a NaiveDate,
+    impl Iterator<Item = &'a StatementLine>,
+    // A closure that does not move, borrow,
+    // or otherwise access (capture) local variables
+    // is coercable to a function pointer (fn).
+    fn(&&'a StatementLine) -> &'a NaiveDate, // The other solution would be to box the closure
+                                             // like this: .group_by(Box::new(|s| &s.value_date))
+                                             // and declare this type instead of fn:
+                                             // Box<dyn Fn(& &'a StatementLine) -> &'a NaiveDate>
+> {
+    stmtlines_after(start_date, messages).group_by(|s| &s.value_date)
+    // .group_by(get_stmtline_value_date)
 }
 
 pub fn stmtlines_after<'a>(
@@ -113,7 +108,7 @@ fn write_stmtline(
         let account_o = choose_account_from_command_line(init_acc, owner_info);
         let account = account_o.expect("Choosing error");
         recipient = Recipient {
-            name: owner_info,
+            name: String::from(owner_info),
             account,
         };
         println!(";;{}\n", account);
@@ -124,22 +119,22 @@ fn write_stmtline(
 }
 
 struct Transaction<'a> {
-    recipient: Recipient<'a>,
+    recipient: Recipient,
     details: Option<&'a str>,
     info_to_owner: Option<&'a str>,
     date: &'a NaiveDate,
     amount: &'a Decimal,
 }
 
-struct Recipient<'a> {
-    name: &'a str,
+struct Recipient {
+    name: String,
     account: Account,
 }
 
 impl<'a> Transaction<'a> {
     fn new_opening_balance(message: &'a Message) -> Transaction<'a> {
         let recipient = Recipient {
-            name: "Checking Balance",
+            name: String::from("Checking Balance"),
             account: Equity(OpeningBalances),
         };
         let info_to_owner = &message.information_to_account_owner;
@@ -151,7 +146,7 @@ impl<'a> Transaction<'a> {
             info_to_owner: info_to_owner.as_ref().map(String::as_str),
         }
     }
-    fn new(statement: &'a mt940::StatementLine, recipient: Recipient<'a>) -> Transaction<'a> {
+    fn new(statement: &'a mt940::StatementLine, recipient: Recipient) -> Transaction<'a> {
         let entry_date = statement.entry_date.as_ref();
         let date = entry_date.unwrap_or(&statement.value_date);
         let info_to_owner = extract_info_to_owner(statement);
@@ -174,7 +169,7 @@ impl<'a> fmt::Display for Transaction<'a> {
             f,
             "{} {}\n  ; {}\n  ; {}\n  {}             {:?}\n  Assets::Checking",
             self.date.format("%Y/%m/%d"),
-            remove_newlines(self.recipient.name),
+            remove_newlines(&self.recipient.name),
             details_str,
             remove_newlines(info_to_owner_str),
             self.recipient.account,
@@ -184,19 +179,18 @@ impl<'a> fmt::Display for Transaction<'a> {
 }
 
 fn extract_recipient(owner_info: &str) -> Recipient {
-    let _extractors: Vec<fn(&str) -> Option<Recipient>> =
+    let extractors: Vec<fn(&str) -> Option<Recipient>> =
         vec![extract_maestro_recipient, extract_sig_recipient];
 
-    _extractors
+    extractors
         .iter()
         .find_map({ |f| f(owner_info) })
         .unwrap_or_else({ || rest_recipient(owner_info) })
 }
 
 fn extract_info_to_owner(statement: &mt940::StatementLine) -> Option<&str> {
-    let op_string_ref: Option<&String> = statement.information_to_account_owner.as_ref();
-    // https://stackoverflow.com/questions/31233938/converting-from-optionstring-to-optionstr
-    op_string_ref.map(String::as_str)
+    let oi = statement.information_to_account_owner.as_ref()?;
+    Some(oi.as_str())
 }
 
 fn extract_maestro_recipient(owner_info: &str) -> Option<Recipient> {
@@ -205,33 +199,32 @@ fn extract_maestro_recipient(owner_info: &str) -> Option<Recipient> {
         static ref MAESTRO: Regex =
             Regex::new(r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)").unwrap();
     }
-    let c = MAESTRO.captures(owner_info);
-    c.and_then(|cap| {
-        cap.get(1).map(|m| Recipient {
-            name: m.as_str(),
-            account: Expenses(Maestro),
-        })
-    })
+    extract_recipient_from_regex(&MAESTRO, owner_info, Expenses(Maestro))
 }
 
 fn extract_sig_recipient(owner_info: &str) -> Option<Recipient> {
     lazy_static! {
-        static ref SIG: Regex = Regex::new(r"Services Industriels de Geneve").unwrap();
+        static ref SIG: Regex = Regex::new(r"(Services Industriels de Geneve)").unwrap();
     }
+    extract_recipient_from_regex(&SIG, owner_info, Expenses(Apartment(Electricity)))
+}
 
-    if SIG.is_match(owner_info) {
-        Some(Recipient {
-            name: "Services Industriels de Geneve",
-            account: Expenses(Apartment(Electricity)),
-        })
-    } else {
-        None
-    }
+fn extract_recipient_from_regex(
+    regex: &Regex,
+    owner_info: &str,
+    account: Account,
+) -> Option<Recipient> {
+    let c = regex.captures(owner_info);
+    c.and_then(|cap| {
+        let mut name = String::from("");
+        cap.expand("$1", &mut name);
+        Some(Recipient { name, account })
+    })
 }
 
 fn rest_recipient(owner_info: &str) -> Recipient {
     Recipient {
-        name: owner_info,
+        name: String::from(owner_info),
         account: Expenses(Rest),
     }
 }

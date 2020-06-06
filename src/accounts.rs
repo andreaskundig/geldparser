@@ -1,5 +1,7 @@
 extern crate derive_more;
+extern crate lazy_static;
 use derive_more::Display;
+use regex::Regex;
 
 use crossterm::{
     cursor::MoveTo,
@@ -12,6 +14,26 @@ use crossterm::{
 };
 use std::fmt;
 use std::io::{stdout, Write};
+
+use Account::*;
+
+pub struct Matcher<'a> {
+    regex: Regex,
+    name_template: &'a str,
+    account: Account,
+}
+
+lazy_static! {
+    static ref MATCHERS: Vec<Matcher<'static>> = vec![Matcher {
+        regex: Regex::new(r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)").unwrap(),
+        name_template: "$1",
+        account: Expenses(Expenses::Maestro),
+    },Matcher{
+        regex: Regex::new(r"(Services Industriels de Geneve)").unwrap(),
+        name_template: "$1",
+        account: Expenses(Expenses::Apartment(Apartment::Electricity)),
+    }];
+}
 
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum Apartment {
