@@ -16,45 +16,29 @@ use std::fmt;
 use std::io::{stdout, Write};
 
 use Account::*;
-
-pub struct Matcher<'a> {
-    regex: Regex,
-    name_template: &'a str,
-    account: Account,
-}
-
-lazy_static! {
-    static ref MATCHERS: Vec<Matcher<'static>> = vec![Matcher {
-        regex: Regex::new(r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)").unwrap(),
-        name_template: "$1",
-        account: Expenses(Expenses::Maestro),
-    },Matcher{
-        regex: Regex::new(r"(Services Industriels de Geneve)").unwrap(),
-        name_template: "$1",
-        account: Expenses(Expenses::Apartment(Apartment::Electricity)),
-    }];
-}
+use Eapartment::*;
+use Eexpenses::*;
 
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
-pub enum Apartment {
+pub enum Eapartment {
     Electricity,
     Rent,
 }
 
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
-pub enum Expenses {
+pub enum Eexpenses {
     Maestro,
     Rest,
     #[display(fmt = "Apartement::{}", _0)]
-    Apartment(Apartment),
+    Apartment(Eapartment),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Equity {
+pub enum Eequity {
     OpeningBalances,
 }
 
-impl<'a> fmt::Display for Equity {
+impl<'a> fmt::Display for Eequity {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Opening Balances")
     }
@@ -63,16 +47,76 @@ impl<'a> fmt::Display for Equity {
 #[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum Account {
     #[display(fmt = "Expenses::{}", _0)]
-    Expenses(Expenses),
+    Expenses(Eexpenses),
     #[display(fmt = "Equity::{}", _0)]
-    Equity(Equity),
+    Equity(Eequity),
 }
 
 pub const ACCOUNTS: [Account; 3] = [
-    Account::Expenses(Expenses::Maestro),
-    Account::Expenses(Expenses::Apartment(Apartment::Electricity)),
-    Account::Expenses(Expenses::Rest),
+    Expenses(Maestro),
+    Expenses(Apartment(Electricity)),
+    Expenses(Rest),
 ];
+
+lazy_static! {
+    static ref M_MAESTRO: Matcher<'static> = Matcher::new(
+        Expenses(Maestro),
+        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)",
+        "$1"
+    );
+    static ref M_SIG: Matcher<'static> = Matcher::new(
+        Expenses(Apartment(Electricity)),
+        r"(Services Industriels de Geneve)",
+        "$1"
+    );
+    pub static ref MATCHERS: Vec<&'static Matcher<'static>> = vec![&M_MAESTRO, &M_SIG,];
+}
+
+pub struct Matcher<'a> {
+    account: Account,
+    regex: Regex,
+    name_template: &'a str,
+}
+
+pub struct Recipient {
+    pub name: String,
+    pub account: Account,
+}
+
+impl<'a> Matcher<'a> {
+    fn new(account: Account, regex_str: &'a str, name_template: &'a str) -> Matcher<'a> {
+        Matcher {
+            account,
+            regex: Regex::new(regex_str).unwrap(),
+            name_template,
+        }
+    }
+
+    pub fn match_to_recipient(&self, owner_info: &str) -> Option<Recipient> {
+        self.regex.captures(owner_info).and_then(|cap| {
+            let mut name = String::from("");
+            cap.expand(self.name_template, &mut name);
+            Some(Recipient {
+                name,
+                account: self.account,
+            })
+        })
+    }
+}
+
+fn rest_recipient(owner_info: &str) -> Recipient {
+    Recipient {
+        name: String::from(owner_info),
+        account: Expenses(Rest),
+    }
+}
+
+pub fn extract_recipient(owner_info: &str) -> Recipient {
+    MATCHERS
+        .iter()
+        .find_map(|m| m.match_to_recipient(owner_info))
+        .unwrap_or_else({ || rest_recipient(owner_info) })
+}
 
 pub fn choose_account_from_command_line<'a>(
     initial_account: Account,

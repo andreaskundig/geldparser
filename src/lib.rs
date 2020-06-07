@@ -6,7 +6,7 @@ extern crate failure;
 extern crate regex;
 extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
-use crate::accounts::{Account::*, Apartment::*, Equity::*, Expenses::*, *};
+use crate::accounts::{extract_recipient, Recipient, Account::*,  Eequity::*};
 use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
@@ -126,11 +126,6 @@ struct Transaction<'a> {
     amount: &'a Decimal,
 }
 
-struct Recipient {
-    name: String,
-    account: Account,
-}
-
 impl<'a> Transaction<'a> {
     fn new_opening_balance(message: &'a Message) -> Transaction<'a> {
         let recipient = Recipient {
@@ -178,55 +173,9 @@ impl<'a> fmt::Display for Transaction<'a> {
     }
 }
 
-fn extract_recipient(owner_info: &str) -> Recipient {
-    let extractors: Vec<fn(&str) -> Option<Recipient>> =
-        vec![extract_maestro_recipient, extract_sig_recipient];
-
-    extractors
-        .iter()
-        .find_map({ |f| f(owner_info) })
-        .unwrap_or_else({ || rest_recipient(owner_info) })
-}
-
 fn extract_info_to_owner(statement: &mt940::StatementLine) -> Option<&str> {
     let oi = statement.information_to_account_owner.as_ref()?;
     Some(oi.as_str())
-}
-
-fn extract_maestro_recipient(owner_info: &str) -> Option<Recipient> {
-    // https://rust-lang-nursery.github.io/rust-cookbook/text/regex.html
-    lazy_static! {
-        static ref MAESTRO: Regex =
-            Regex::new(r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)").unwrap();
-    }
-    extract_recipient_from_regex(&MAESTRO, owner_info, Expenses(Maestro))
-}
-
-fn extract_sig_recipient(owner_info: &str) -> Option<Recipient> {
-    lazy_static! {
-        static ref SIG: Regex = Regex::new(r"(Services Industriels de Geneve)").unwrap();
-    }
-    extract_recipient_from_regex(&SIG, owner_info, Expenses(Apartment(Electricity)))
-}
-
-fn extract_recipient_from_regex(
-    regex: &Regex,
-    owner_info: &str,
-    account: Account,
-) -> Option<Recipient> {
-    let c = regex.captures(owner_info);
-    c.and_then(|cap| {
-        let mut name = String::from("");
-        cap.expand("$1", &mut name);
-        Some(Recipient { name, account })
-    })
-}
-
-fn rest_recipient(owner_info: &str) -> Recipient {
-    Recipient {
-        name: String::from(owner_info),
-        account: Expenses(Rest),
-    }
 }
 
 /* Cow
