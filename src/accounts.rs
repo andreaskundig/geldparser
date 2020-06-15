@@ -59,17 +59,19 @@ pub const ACCOUNTS: [Account; 3] = [
 ];
 
 lazy_static! {
-    static ref M_MAESTRO: Matcher<'static> = Matcher::new(
+    pub static ref R_GROUPED_EBANKING: Regex =
+        Regex::new(r"e(Banking|Bill) +\(\d+\)").unwrap();
+    static ref M_MAESTRO: Matcher<'static> = m1(
         Expenses(Maestro),
-        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)",
-        "$1"
-    );
-    static ref M_SIG: Matcher<'static> = Matcher::new(
+        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)");
+    static ref M_SIG: Matcher<'static> = m1(
         Expenses(Apartment(Electricity)),
-        r"(Services Industriels de Geneve)",
-        "$1"
-    );
+        r"(Services Industriels de Geneve)");
     pub static ref MATCHERS: Vec<&'static Matcher<'static>> = vec![&M_MAESTRO, &M_SIG,];
+}
+
+pub fn is_grouped_ebanking(details: &str) -> bool{
+    R_GROUPED_EBANKING.is_match(details)
 }
 
 pub struct Matcher<'a> {
@@ -83,15 +85,19 @@ pub struct Recipient {
     pub account: Account,
 }
 
-impl<'a> Matcher<'a> {
-    fn new(account: Account, regex_str: &'a str, name_template: &'a str) -> Matcher<'a> {
-        Matcher {
-            account,
-            regex: Regex::new(regex_str).unwrap(),
-            name_template,
-        }
+fn m <'a>(account: Account, regex_str: &'a str, name_template: &'a str) -> Matcher<'a> {
+    Matcher {
+        account,
+        regex: Regex::new(regex_str).unwrap(),
+        name_template,
     }
+}
 
+fn m1<'a>(account: Account, regex_str: &'a str) -> Matcher<'a> {
+    m(account, regex_str, "$1")
+}
+
+impl<'a> Matcher<'a> {
     pub fn match_to_recipient(&self, owner_info: &str) -> Option<Recipient> {
         self.regex.captures(owner_info).and_then(|cap| {
             let mut name = String::from("");

@@ -6,7 +6,7 @@ extern crate failure;
 extern crate regex;
 extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
-use crate::accounts::{extract_recipient, Recipient, Account::*,  Eequity::*};
+use crate::accounts::{is_grouped_ebanking, extract_recipient, Recipient, Account::*,  Eequity::*};
 use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
@@ -43,6 +43,14 @@ pub fn run(config: Config) -> Result<()> {
     for (_date, stmtlines_group) in grouped {
         //TODO find ebanking lines, make detailed transactions
         for stmtline in stmtlines_group {
+            let i_to_o = stmtline.supplementary_details.as_ref();
+            if let Some(details) = i_to_o {
+                if is_grouped_ebanking(details){
+                    write!(&mut output_file, "  ; grouped ebanking\n")?;
+                }else{
+                    write!(&mut output_file, "  ; not gr {}\n",  details)?;
+                }
+            }
             write_stmtline(&mut output_file, stmtline, &config)?;
         }
     }
@@ -162,9 +170,12 @@ impl<'a> fmt::Display for Transaction<'a> {
         //TODO only add a line for details/owner_info if they are present
         write!(
             f,
-            "{} {}\n  ; {}\n  ; {}\n  {}             {:?}\n  Assets::Checking",
-            self.date.format("%Y/%m/%d"),
-            remove_newlines(&self.recipient.name),
+            "{} {}
+  ; {}
+  ; {}
+  {}             {:?}
+  Assets::Checking",
+            self.date.format("%Y/%m/%d"), remove_newlines(&self.recipient.name),
             details_str,
             remove_newlines(info_to_owner_str),
             self.recipient.account,
