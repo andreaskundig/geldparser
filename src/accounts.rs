@@ -70,7 +70,7 @@ lazy_static! {
     pub static ref MATCHERS: Vec<&'static Matcher<'static>> = vec![&M_MAESTRO, &M_SIG,];
 }
 
-pub fn is_grouped_ebanking(details: &str) -> bool{
+pub fn is_grouped_ebanking_details(details: &str) -> bool{
     R_GROUPED_EBANKING.is_match(details)
 }
 

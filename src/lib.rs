@@ -6,7 +6,9 @@ extern crate failure;
 extern crate regex;
 extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
-use crate::accounts::{is_grouped_ebanking, extract_recipient, Recipient, Account::*,  Eequity::*};
+use crate::accounts::{
+    extract_recipient, is_grouped_ebanking_details, Account::*, Eequity::*, Recipient,
+};
 use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
@@ -22,7 +24,7 @@ use itertools::{structs::GroupBy, Itertools};
 
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
-    let _date_to_payment = ebanking_payments()?;
+    let date_to_payment = ebanking_payments()?;
     let input_filename = &config.input_filename;
     let mut output_file = File::create(&config.output_filename)?;
     println!("; {} -> {}", input_filename, &config.output_filename);
@@ -43,18 +45,34 @@ pub fn run(config: Config) -> Result<()> {
     for (_date, stmtlines_group) in grouped {
         //TODO find ebanking lines, make detailed transactions
         for stmtline in stmtlines_group {
-            let i_to_o = stmtline.supplementary_details.as_ref();
-            if let Some(details) = i_to_o {
-                if is_grouped_ebanking(details){
-                    write!(&mut output_file, "  ; grouped ebanking\n")?;
+            if is_grouped_ebanking(stmtline) {
+                let date = &stmtline.value_date;
+                if let Some(payments) = date_to_payment.get(date){
+                    write!(&mut output_file,
+                           "; grouped ebanking of {} {:?}\n",
+                           payments.len(), payments.iter()
+                           .filter_map(|s| s.get(5))
+                           .filter_map(|s| s.parse::<f64>().ok())
+                           .sum::<f64>())?;
+                           //.collect::<Vec<_>>())?;
                 }else{
-                    write!(&mut output_file, "  ; not gr {}\n",  details)?;
+                    write!(&mut output_file,
+                           "; grouped ebanking but no payments\n")?;
                 }
+            } else {
+                write!(&mut output_file, "; not grouped\n")?;
             }
             write_stmtline(&mut output_file, stmtline, &config)?;
         }
     }
     Ok(())
+}
+
+fn is_grouped_ebanking(stmtline: &StatementLine) -> bool {
+    match stmtline.supplementary_details.as_ref() {
+        Some(details) => is_grouped_ebanking_details(details),
+        None => false,
+    }
 }
 
 pub fn parse_messages(input_filename: &str) -> Result<Vec<Message>> {
@@ -72,10 +90,6 @@ pub fn first_after<'a>(
         .find(|&m| m.opening_balance.date >= opening_balance_date)
 }
 
-// fn get_stmtline_value_date(stmtline: && StatementLine) -> NaiveDate{
-//     stmtline.value_date
-// }
-
 pub fn stmtlines_after_grouped<'a>(
     start_date: &'a NaiveDate,
     messages: &'a [Message],
@@ -85,13 +99,13 @@ pub fn stmtlines_after_grouped<'a>(
     // A closure that does not move, borrow,
     // or otherwise access (capture) local variables
     // is coercable to a function pointer (fn).
-    fn(&&'a StatementLine) -> &'a NaiveDate, // The other solution would be to box the closure
-                                             // like this: .group_by(Box::new(|s| &s.value_date))
-                                             // and declare this type instead of fn:
-                                             // Box<dyn Fn(& &'a StatementLine) -> &'a NaiveDate>
+    // (The other solution would be to box the closure
+    // like this: .group_by(Box::new(|s| &s.value_date))
+    // and declare this type instead of fn:
+    // Box<dyn Fn(& &'a StatementLine) -> &'a NaiveDate>)
+    fn(&&'a StatementLine) -> &'a NaiveDate,
 > {
     stmtlines_after(start_date, messages).group_by(|s| &s.value_date)
-    // .group_by(get_stmtline_value_date)
 }
 
 pub fn stmtlines_after<'a>(
@@ -108,22 +122,26 @@ fn write_stmtline(
     output_file: &mut File,
     statement: &StatementLine,
     config: &Config,
-) -> std::io::Result<()> {
+) -> Result<()> {
     let owner_info = extract_info_to_owner(statement).unwrap_or("");
     let mut recipient = extract_recipient(owner_info);
     if config.interactive {
-        let init_acc = recipient.account;
-        let account_o = choose_account_from_command_line(init_acc, owner_info);
-        let account = account_o.expect("Choosing error");
-        recipient = Recipient {
-            name: String::from(owner_info),
-            account,
-        };
-        println!(";;{}\n", account);
+        recipient = change_account_interactively(&recipient, owner_info)?;
     }
     let transaction = Transaction::new(statement, recipient);
     writeln!(output_file, "{}\n", transaction)?;
     Ok(())
+}
+
+fn change_account_interactively(recipient: &Recipient, owner_info: &str) -> Result<Recipient> {
+    let init_acc = recipient.account;
+    let account_o = choose_account_from_command_line(init_acc, owner_info);
+    let account = account_o?;
+    println!(";;{}\n", account);
+    Ok(Recipient {
+        name: String::from(owner_info),
+        account,
+    })
 }
 
 struct Transaction<'a> {
@@ -175,7 +193,8 @@ impl<'a> fmt::Display for Transaction<'a> {
   ; {}
   {}             {:?}
   Assets::Checking",
-            self.date.format("%Y/%m/%d"), remove_newlines(&self.recipient.name),
+            self.date.format("%Y/%m/%d"),
+            remove_newlines(&self.recipient.name),
             details_str,
             remove_newlines(info_to_owner_str),
             self.recipient.account,
