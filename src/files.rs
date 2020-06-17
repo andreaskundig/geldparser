@@ -28,7 +28,9 @@ fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecor
         .map(|f| ReaderBuilder::new().delimiter(b';').from_reader(f))
         .collect();
     let records = readers.iter_mut()
-        .flat_map(|rdr| rdr.records())
+        .map(|rdr| rdr.records().collect::<Vec<_>>())
+        .filter(|records| records.len() > 1)
+        .flatten()
         .collect::<Result<Vec<StringRecord>,_>>()?;
     let map_entries = records.into_iter()
         .map(|record|{

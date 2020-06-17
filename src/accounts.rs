@@ -60,7 +60,7 @@ pub const ACCOUNTS: [Account; 3] = [
 
 lazy_static! {
     pub static ref R_GROUPED_EBANKING: Regex =
-        Regex::new(r"e(Banking|Bill) +\(\d+\)").unwrap();
+        Regex::new(r"eBanking +\(\d+\)").unwrap();
     static ref M_MAESTRO: Matcher<'static> = m1(
         Expenses(Maestro),
         r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)");

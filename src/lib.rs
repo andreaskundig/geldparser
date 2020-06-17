@@ -10,6 +10,7 @@ use crate::accounts::{
     extract_recipient, is_grouped_ebanking_details, Account::*, Eequity::*, Recipient,
 };
 use chrono::NaiveDate;
+use csv::StringRecord;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
@@ -47,17 +48,29 @@ pub fn run(config: Config) -> Result<()> {
         for stmtline in stmtlines_group {
             if is_grouped_ebanking(stmtline) {
                 let date = &stmtline.value_date;
-                if let Some(payments) = date_to_payment.get(date){
-                    write!(&mut output_file,
-                           "; grouped ebanking of {} {:?}\n",
-                           payments.len(), payments.iter()
-                           .filter_map(|s| s.get(5))
-                           .filter_map(|s| s.parse::<f64>().ok())
-                           .sum::<f64>())?;
-                           //.collect::<Vec<_>>())?;
-                }else{
-                    write!(&mut output_file,
-                           "; grouped ebanking but no payments\n")?;
+                if let Some(all_payments) = date_to_payment.get(date) {
+                    let payments: Vec<_> = all_payments.iter().filter(chf_filter).collect();
+                    for payment in payments.iter() {
+                        write!(
+                            &mut output_file,
+                            "; {} {}\n",
+                            payment.get(5).unwrap_or("0"),
+                            payment.get(1).unwrap_or("-")
+                        )?;
+                    }
+                    write!(
+                        &mut output_file,
+                        "; {} grouped ebanking of {}\n",
+                        payments
+                            .iter()
+                            .filter_map(|s| s.get(5))
+                            .filter_map(|s| s.parse::<f64>().ok())
+                            .sum::<f64>(),
+                        payments.len(),
+                    )?;
+                //.collect::<Vec<_>>())?;
+                } else {
+                    write!(&mut output_file, "; grouped ebanking but no payments\n")?;
                 }
             } else {
                 write!(&mut output_file, "; not grouped\n")?;
@@ -66,6 +79,13 @@ pub fn run(config: Config) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn chf_filter(record: &&StringRecord) -> bool {
+    match record.get(4) {
+        Some(currency) => currency == "CHF",
+        _ => false,
+    }
 }
 
 fn is_grouped_ebanking(stmtline: &StatementLine) -> bool {
