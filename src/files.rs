@@ -10,6 +10,24 @@ use std::io;
 use std::{collections::HashMap, ffi::OsString};
 use itertools::Itertools;
 
+pub trait PaymentExt{
+    fn amount(&self) -> f64;
+    fn recipient(&self) -> &str;
+    fn is_chf(&self) -> bool;
+}
+
+impl PaymentExt for StringRecord{
+    fn amount(&self) -> f64 {
+        self.get(5).map(|s| s.parse::<f64>().ok()).flatten().unwrap_or(0.0)
+    }
+    fn recipient(&self) -> &str{
+        self.get(1).unwrap_or("")
+    }
+    fn is_chf(&self) -> bool {
+        self.get(4).map(|currency| currency == "CHF").unwrap_or(false)
+    }
+}
+
 pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<StringRecord>>> {
     let paths = fs::read_dir("../bewegungen/pain")?
         .map(|res| res.map(|e| e.path().into_os_string()))

@@ -10,7 +10,6 @@ use crate::accounts::{
     extract_recipient, is_grouped_ebanking_details, Account::*, Eequity::*, Recipient,
 };
 use chrono::NaiveDate;
-use csv::StringRecord;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
@@ -18,7 +17,7 @@ use rust_decimal::Decimal;
 use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*};
 pub mod accounts;
 pub mod files;
-use crate::files::ebanking_payments;
+use crate::files::{ebanking_payments, PaymentExt};
 use anyhow::Result;
 use failure::Fail;
 use itertools::{structs::GroupBy, Itertools};
@@ -49,23 +48,20 @@ pub fn run(config: Config) -> Result<()> {
             if is_grouped_ebanking(stmtline) {
                 let date = &stmtline.value_date;
                 if let Some(all_payments) = date_to_payment.get(date) {
-                    let payments: Vec<_> = all_payments.iter().filter(chf_filter).collect();
+                    let payments: Vec<_> = all_payments.iter()
+                        .filter(|p| p.is_chf()).collect();
                     for payment in payments.iter() {
                         write!(
                             &mut output_file,
                             "; {} {}\n",
-                            payment.get(5).unwrap_or("0"),
-                            payment.get(1).unwrap_or("-")
+                            payment.amount(),
+                            payment.recipient()
                         )?;
                     }
                     write!(
                         &mut output_file,
                         "; {} grouped ebanking of {}\n",
-                        payments
-                            .iter()
-                            .filter_map(|s| s.get(5))
-                            .filter_map(|s| s.parse::<f64>().ok())
-                            .sum::<f64>(),
+                        payments.iter().map(|s| s.amount()).sum::<f64>(),
                         payments.len(),
                     )?;
                 //.collect::<Vec<_>>())?;
@@ -79,13 +75,6 @@ pub fn run(config: Config) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn chf_filter(record: &&StringRecord) -> bool {
-    match record.get(4) {
-        Some(currency) => currency == "CHF",
-        _ => false,
-    }
 }
 
 fn is_grouped_ebanking(stmtline: &StatementLine) -> bool {
