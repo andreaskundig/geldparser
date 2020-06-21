@@ -6,7 +6,8 @@ use regex::Regex;
 use crossterm::{
     cursor::MoveTo,
     event::{
-        read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
+        read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
+        KeyEvent, KeyModifiers,
     },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
@@ -63,14 +64,17 @@ lazy_static! {
         Regex::new(r"eBanking +\(\d+\)").unwrap();
     static ref M_MAESTRO: Matcher<'static> = m1(
         Expenses(Maestro),
-        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)");
+        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)"
+    );
     static ref M_SIG: Matcher<'static> = m1(
         Expenses(Apartment(Electricity)),
-        r"(Services Industriels de Geneve)");
-    pub static ref MATCHERS: Vec<&'static Matcher<'static>> = vec![&M_MAESTRO, &M_SIG,];
+        r"(Services Industriels de Geneve)"
+    );
+    pub static ref MATCHERS: Vec<&'static Matcher<'static>> =
+        vec![&M_MAESTRO, &M_SIG,];
 }
 
-pub fn is_grouped_ebanking_details(details: &str) -> bool{
+pub fn is_grouped_ebanking_details(details: &str) -> bool {
     R_GROUPED_EBANKING.is_match(details)
 }
 
@@ -85,7 +89,11 @@ pub struct Recipient {
     pub account: Account,
 }
 
-fn m <'a>(account: Account, regex_str: &'a str, name_template: &'a str) -> Matcher<'a> {
+fn m<'a>(
+    account: Account,
+    regex_str: &'a str,
+    name_template: &'a str,
+) -> Matcher<'a> {
     Matcher {
         account,
         regex: Regex::new(regex_str).unwrap(),
@@ -98,7 +106,10 @@ fn m1<'a>(account: Account, regex_str: &'a str) -> Matcher<'a> {
 }
 
 impl<'a> Matcher<'a> {
-    pub fn match_to_recipient(&self, owner_info: &str) -> Option<Recipient> {
+    pub fn match_to_recipient(
+        &self,
+        owner_info: &str,
+    ) -> Option<Recipient> {
         self.regex.captures(owner_info).and_then(|cap| {
             let mut name = String::from("");
             cap.expand(self.name_template, &mut name);
@@ -132,7 +143,8 @@ pub fn choose_account_from_command_line<'a>(
     let mut stdout = stdout();
     execute!(stdout, EnableMouseCapture)?;
     let mut selected: usize = 0;
-    let found_index_o = ACCOUNTS.iter().position(|&a| a == initial_account);
+    let found_index_o =
+        ACCOUNTS.iter().position(|&a| a == initial_account);
     if let Some(found_index) = found_index_o {
         selected = found_index;
     }

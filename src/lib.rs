@@ -7,18 +7,21 @@ extern crate regex;
 extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{
-    extract_recipient, is_grouped_ebanking_details, Account::*, Eequity::*, Recipient,
+    extract_recipient, is_grouped_ebanking_details, Account::*,
+    Eequity::*, Recipient,
 };
 use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
 use rust_decimal::Decimal;
-use std::{borrow::Cow, fmt, fs, fs::File, io::prelude::*};
+use std::{
+    borrow::Cow, collections::HashMap, fmt, fs, fs::File, io::prelude::*,
+};
 pub mod accounts;
 pub mod files;
-use crate::files::{ebanking_payments, PaymentExt};
-use anyhow::Result;
+use crate::files::{ebanking_payments, Order};
+use anyhow::{anyhow, Result};
 use failure::Fail;
 use itertools::{structs::GroupBy, Itertools};
 
@@ -26,51 +29,69 @@ use itertools::{structs::GroupBy, Itertools};
 pub fn run(config: Config) -> Result<()> {
     let date_to_payment = ebanking_payments()?;
     let input_filename = &config.input_filename;
-    let mut output_file = File::create(&config.output_filename)?;
+    let mut of = File::create(&config.output_filename)?;
     println!("; {} -> {}", input_filename, &config.output_filename);
-    writeln!(output_file, "; {:?}\n", input_filename)?;
+    writeln!(of, "; {:?}\n", input_filename)?;
     let messages = parse_messages(&input_filename)?;
 
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
     first_after(&start_date, &messages)
         .map(|message| {
-            let opening_transaction = Transaction::new_opening_balance(message);
-            writeln!(output_file, "{}\n", opening_transaction)
+            writeln!(of, "{}\n", Transaction::new_opening_balance(message))
         })
         .unwrap_or(Ok(()))?;
 
     let grouped = &stmtlines_after_grouped(&start_date, &messages);
     for (_date, stmtlines_group) in grouped {
-        //TODO find ebanking lines, make detailed transactions
         for stmtline in stmtlines_group {
             if is_grouped_ebanking(stmtline) {
-                let date = &stmtline.value_date;
-                if let Some(all_payments) = date_to_payment.get(date) {
-                    let payments: Vec<_> = all_payments.iter().filter(|p| p.is_chf()).collect();
-                    for payment in payments.iter() {
-                        write!(
-                            &mut output_file,
-                            "; {} {}\n",
-                            payment.amount(),
-                            payment.recipient()
-                        )?;
-                    }
-                    write!(
-                        &mut output_file,
-                        "; {} grouped ebanking of {}\n",
-                        payments.iter().map(|s| s.amount()).sum::<f64>(),
-                        payments.len(),
-                    )?;
-                //.collect::<Vec<_>>())?;
-                } else {
-                    write!(&mut output_file, "; grouped ebanking but no payments\n")?;
-                }
+                write_grouped_ebanking_orders(
+                    &mut of,
+                    stmtline,
+                    &config,
+                    &date_to_payment,
+                )?;
             } else {
-                write!(&mut output_file, "; not grouped\n")?;
+                write!(&mut of, "; not grouped\n")?;
+                write_stmtline(&mut of, stmtline, &config)?;
             }
-            write_stmtline(&mut output_file, stmtline, &config)?;
         }
+    }
+    Ok(())
+}
+
+fn write_grouped_ebanking_orders(
+    of: &mut File,
+    stmtline: &StatementLine,
+    _config: &Config,
+    date_to_payment: &HashMap<NaiveDate, Vec<Order>>,
+) -> Result<()> {
+    let date = &stmtline.value_date;
+    let all_orders = date_to_payment
+        .get(date)
+        .ok_or(anyhow!("no payments for grouped ebanking"))?;
+    let chf_orders: Vec<_> =
+        all_orders.iter().filter(|p| p.is_chf).collect();
+    for order in chf_orders.iter() {
+        write!(of, "; {} {}\n", order.amount, &order.description)?;
+        //TODO determine recipient
+        let rec = extract_recipient(&order.description);
+        writeln!(of, "{}", Transaction::from_order(order, rec),)?;
+    }
+    let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
+    write!(
+        of,
+        "; {} grouped ebanking of {} (sum)\n",
+        sum,
+        chf_orders.len(),
+    )?;
+    if sum != stmtline.amount {
+        return Err(anyhow!(
+            "orders sum {} != {} aggregate statement amount",
+            sum,
+            stmtline.amount
+        ));
     }
     Ok(())
 }
@@ -137,7 +158,10 @@ fn write_stmtline(
     Ok(())
 }
 
-fn determine_recipient(description: &str, interactive: bool) -> Result<Recipient> {
+fn determine_recipient(
+    description: &str,
+    interactive: bool,
+) -> Result<Recipient> {
     let mut recipient = extract_recipient(description);
     if interactive {
         recipient = change_account_interactively(&recipient, description)?;
@@ -145,7 +169,10 @@ fn determine_recipient(description: &str, interactive: bool) -> Result<Recipient
     Ok(recipient)
 }
 
-fn change_account_interactively(recipient: &Recipient, owner_info: &str) -> Result<Recipient> {
+fn change_account_interactively(
+    recipient: &Recipient,
+    owner_info: &str,
+) -> Result<Recipient> {
     let init_acc = recipient.account;
     let account_o = choose_account_from_command_line(init_acc, owner_info);
     let account = account_o?;
@@ -161,7 +188,7 @@ struct Transaction<'a> {
     details: Option<&'a str>,
     info_to_owner: Option<&'a str>,
     date: &'a NaiveDate,
-    amount: &'a Decimal,
+    amount: Decimal,
 }
 
 impl<'a> Transaction<'a> {
@@ -173,15 +200,28 @@ impl<'a> Transaction<'a> {
         let info_to_owner = &message.information_to_account_owner;
         Transaction {
             date: &message.opening_balance.date,
-            amount: &message.opening_balance.amount,
+            amount: message.opening_balance.amount,
             recipient,
             details: Option::None,
             info_to_owner: info_to_owner.as_ref().map(String::as_str),
         }
     }
-    // TODO fn new_from_payment(payment: dyn PaymentExt, recipient: Recipient){
-    // }
-    fn new(statement: &'a mt940::StatementLine, recipient: Recipient) -> Transaction<'a> {
+    fn from_order(
+        order: &'a Order,
+        recipient: Recipient,
+    ) -> Transaction<'a> {
+        Transaction {
+            date: &order.date,
+            recipient,
+            info_to_owner: Some(&order.description),
+            amount: order.amount,
+            details: None,
+        }
+    }
+    fn new(
+        statement: &'a mt940::StatementLine,
+        recipient: Recipient,
+    ) -> Transaction<'a> {
         let entry_date = statement.entry_date.as_ref();
         let date = entry_date.unwrap_or(&statement.value_date);
         let info_to_owner = extract_info_to_owner(statement);
@@ -189,8 +229,12 @@ impl<'a> Transaction<'a> {
             date,
             recipient,
             info_to_owner,
-            amount: &statement.amount,
-            details: statement.supplementary_details.as_ref().map(String::as_str),
+            amount: statement.amount,
+
+            details: statement
+                .supplementary_details
+                .as_ref()
+                .map(String::as_str),
         }
     }
 }
@@ -217,7 +261,9 @@ impl<'a> fmt::Display for Transaction<'a> {
     }
 }
 
-fn extract_info_to_owner(statement: &mt940::StatementLine) -> Option<&str> {
+fn extract_info_to_owner(
+    statement: &mt940::StatementLine,
+) -> Option<&str> {
     let oi = statement.information_to_account_owner.as_ref()?;
     Some(oi.as_str())
 }

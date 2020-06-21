@@ -1,44 +1,46 @@
 extern crate anyhow;
 extern crate csv;
 
-use anyhow::Result;
-use chrono::{NaiveDate, ParseError};
+use anyhow::{anyhow, Result};
+use chrono::NaiveDate;
 use csv::{ReaderBuilder, StringRecord};
 use itertools::Itertools;
+use rust_decimal::Decimal;
 use std::fs;
 use std::fs::File;
 use std::io;
+use std::str::FromStr;
 use std::{collections::HashMap, ffi::OsString};
 
-pub trait PaymentExt {
-    fn date(&self) -> Result<NaiveDate, ParseError>;
-    fn amount(&self) -> f64;
-    fn recipient(&self) -> &str;
-    fn is_chf(&self) -> bool;
+pub struct Order {
+    pub date: NaiveDate,
+    pub amount: Decimal,
+    pub description: String,
+    pub is_chf: bool,
 }
 
-impl PaymentExt for StringRecord {
-    fn date(&self) -> Result<NaiveDate, ParseError> {
-        let date_string = &self[0];
-        NaiveDate::parse_from_str(date_string, "%d.%m.%Y")
-    }
-    fn amount(&self) -> f64 {
-        self.get(5)
-            .map(|s| s.parse::<f64>().ok())
-            .flatten()
-            .unwrap_or(0.0)
-    }
-    fn recipient(&self) -> &str {
-        self.get(1).unwrap_or("")
-    }
-    fn is_chf(&self) -> bool {
-        self.get(4)
-            .map(|currency| currency == "CHF")
-            .unwrap_or(false)
+impl Order {
+    fn new(record: &StringRecord) -> Result<Order> {
+        Ok(Order {
+            date: record
+                .get(0)
+                .ok_or(anyhow!("missing date"))
+                .map(|ds| NaiveDate::parse_from_str(ds, "%d.%m.%Y"))??,
+            amount: record
+                .get(5)
+                .map(|a| Decimal::from_str(a).ok())
+                .flatten()
+                .unwrap_or(Decimal::new(0, 0)),
+            description: String::from(record.get(1).unwrap_or("")),
+            is_chf: record
+                .get(4)
+                .map(|currency| currency == "CHF")
+                .unwrap_or(false),
+        })
     }
 }
 
-pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<StringRecord>>> {
+pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<Order>>> {
     let paths = fs::read_dir("../bewegungen/pain")?
         .map(|res| res.map(|e| e.path().into_os_string()))
         .filter(|n| match n {
@@ -49,7 +51,7 @@ pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<StringRecord>>> {
     build_map(&paths)
 }
 
-fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecord>>> {
+fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<Order>>> {
     let files = paths
         .iter()
         .map(File::open)
@@ -66,7 +68,10 @@ fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecor
         .collect::<Result<Vec<StringRecord>, _>>()?;
     let map_entries = records
         .into_iter()
-        .map(|record| record.date().map(|date| (date, record)))
-        .collect::<Result<Vec<(NaiveDate, StringRecord)>, _>>()?;
+        .map(|record| {
+            let order = Order::new(&record)?;
+            Ok((order.date, order))
+        })
+        .collect::<Result<Vec<(NaiveDate, Order)>>>()?;
     Ok(map_entries.into_iter().into_group_map())
 }
