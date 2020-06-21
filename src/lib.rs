@@ -33,13 +33,12 @@ pub fn run(config: Config) -> Result<()> {
 
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
-    if let Some(opening_message) = first_after(&start_date, &messages) {
-        writeln!(
-            output_file,
-            "{}\n",
-            Transaction::new_opening_balance(opening_message)
-        )?;
-    }
+    first_after(&start_date, &messages)
+        .map(|message| {
+            let opening_transaction = Transaction::new_opening_balance(message);
+            writeln!(output_file, "{}\n", opening_transaction)
+        })
+        .unwrap_or(Ok(()))?;
 
     let grouped = &stmtlines_after_grouped(&start_date, &messages);
     for (_date, stmtlines_group) in grouped {
@@ -48,8 +47,7 @@ pub fn run(config: Config) -> Result<()> {
             if is_grouped_ebanking(stmtline) {
                 let date = &stmtline.value_date;
                 if let Some(all_payments) = date_to_payment.get(date) {
-                    let payments: Vec<_> = all_payments.iter()
-                        .filter(|p| p.is_chf()).collect();
+                    let payments: Vec<_> = all_payments.iter().filter(|p| p.is_chf()).collect();
                     for payment in payments.iter() {
                         write!(
                             &mut output_file,
@@ -133,13 +131,18 @@ fn write_stmtline(
     config: &Config,
 ) -> Result<()> {
     let owner_info = extract_info_to_owner(statement).unwrap_or("");
-    let mut recipient = extract_recipient(owner_info);
-    if config.interactive {
-        recipient = change_account_interactively(&recipient, owner_info)?;
-    }
+    let recipient = determine_recipient(owner_info, config.interactive)?;
     let transaction = Transaction::new(statement, recipient);
     writeln!(output_file, "{}\n", transaction)?;
     Ok(())
+}
+
+fn determine_recipient(description: &str, interactive: bool) -> Result<Recipient> {
+    let mut recipient = extract_recipient(description);
+    if interactive {
+        recipient = change_account_interactively(&recipient, description)?;
+    }
+    Ok(recipient)
 }
 
 fn change_account_interactively(recipient: &Recipient, owner_info: &str) -> Result<Recipient> {
@@ -176,6 +179,8 @@ impl<'a> Transaction<'a> {
             info_to_owner: info_to_owner.as_ref().map(String::as_str),
         }
     }
+    // TODO fn new_from_payment(payment: dyn PaymentExt, recipient: Recipient){
+    // }
     fn new(statement: &'a mt940::StatementLine, recipient: Recipient) -> Transaction<'a> {
         let entry_date = statement.entry_date.as_ref();
         let date = entry_date.unwrap_or(&statement.value_date);

@@ -2,29 +2,39 @@ extern crate anyhow;
 extern crate csv;
 
 use anyhow::Result;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, ParseError};
 use csv::{ReaderBuilder, StringRecord};
+use itertools::Itertools;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::{collections::HashMap, ffi::OsString};
-use itertools::Itertools;
 
-pub trait PaymentExt{
+pub trait PaymentExt {
+    fn date(&self) -> Result<NaiveDate, ParseError>;
     fn amount(&self) -> f64;
     fn recipient(&self) -> &str;
     fn is_chf(&self) -> bool;
 }
 
-impl PaymentExt for StringRecord{
-    fn amount(&self) -> f64 {
-        self.get(5).map(|s| s.parse::<f64>().ok()).flatten().unwrap_or(0.0)
+impl PaymentExt for StringRecord {
+    fn date(&self) -> Result<NaiveDate, ParseError> {
+        let date_string = &self[0];
+        NaiveDate::parse_from_str(date_string, "%d.%m.%Y")
     }
-    fn recipient(&self) -> &str{
+    fn amount(&self) -> f64 {
+        self.get(5)
+            .map(|s| s.parse::<f64>().ok())
+            .flatten()
+            .unwrap_or(0.0)
+    }
+    fn recipient(&self) -> &str {
         self.get(1).unwrap_or("")
     }
     fn is_chf(&self) -> bool {
-        self.get(4).map(|currency| currency == "CHF").unwrap_or(false)
+        self.get(4)
+            .map(|currency| currency == "CHF")
+            .unwrap_or(false)
     }
 }
 
@@ -40,24 +50,23 @@ pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<StringRecord>>> {
 }
 
 fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<StringRecord>>> {
-
-    let files = paths.iter().map(File::open).collect::<Result<Vec<_>,_>>()?;
-    let mut readers: Vec<_>= files.iter()
+    let files = paths
+        .iter()
+        .map(File::open)
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut readers: Vec<_> = files
+        .iter()
         .map(|f| ReaderBuilder::new().delimiter(b';').from_reader(f))
         .collect();
-    let records = readers.iter_mut()
+    let records = readers
+        .iter_mut()
         .map(|rdr| rdr.records().collect::<Vec<_>>())
         .filter(|records| records.len() > 1)
         .flatten()
-        .collect::<Result<Vec<StringRecord>,_>>()?;
-    let map_entries = records.into_iter()
-        .map(|record|{
-            let date_string = &record[0];
-            match NaiveDate::parse_from_str(date_string, "%d.%m.%Y"){
-                Ok(date) => Ok((date, record)),
-                Err(e) => return Err(e),
-            }
-        })
-        .collect::<Result<Vec<(NaiveDate, StringRecord)>,_>>()?;
-      Ok(map_entries.into_iter().into_group_map())
+        .collect::<Result<Vec<StringRecord>, _>>()?;
+    let map_entries = records
+        .into_iter()
+        .map(|record| record.date().map(|date| (date, record)))
+        .collect::<Result<Vec<(NaiveDate, StringRecord)>, _>>()?;
+    Ok(map_entries.into_iter().into_group_map())
 }
