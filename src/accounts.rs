@@ -70,8 +70,12 @@ lazy_static! {
         Expenses(Apartment(Electricity)),
         r"(Services Industriels de Geneve)"
     );
+    static ref M_SINGLE_EBANKING: Matcher<'static> = m1(
+        Expenses(Rest),
+        r"\?ZKB:2214 (.*); Gemaess Ihrem eBanking Auftrag.*"
+    );
     pub static ref MATCHERS: Vec<&'static Matcher<'static>> =
-        vec![&M_MAESTRO, &M_SIG,];
+        vec![&M_MAESTRO, &M_SIG, &M_SINGLE_EBANKING];
 }
 
 pub fn is_grouped_ebanking_details(details: &str) -> bool {

@@ -42,7 +42,7 @@ pub fn run(config: Config) -> Result<()> {
         })
         .unwrap_or(Ok(()))?;
 
-    let grouped = &stmtlines_after_grouped(&start_date, &messages);
+    let grouped = &stmtlines_grouped_by_date_after(&start_date, &messages);
     for (_date, stmtlines_group) in grouped {
         for stmtline in stmtlines_group {
             if is_grouped_ebanking(stmtline) {
@@ -53,45 +53,9 @@ pub fn run(config: Config) -> Result<()> {
                     &date_to_payment,
                 )?;
             } else {
-                write!(&mut of, "; not grouped\n")?;
                 write_stmtline(&mut of, stmtline, &config)?;
             }
         }
-    }
-    Ok(())
-}
-
-fn write_grouped_ebanking_orders(
-    of: &mut File,
-    stmtline: &StatementLine,
-    _config: &Config,
-    date_to_payment: &HashMap<NaiveDate, Vec<Order>>,
-) -> Result<()> {
-    let date = &stmtline.value_date;
-    let all_orders = date_to_payment
-        .get(date)
-        .ok_or(anyhow!("no payments for grouped ebanking"))?;
-    let chf_orders: Vec<_> =
-        all_orders.iter().filter(|p| p.is_chf).collect();
-    for order in chf_orders.iter() {
-        write!(of, "; {} {}\n", order.amount, &order.description)?;
-        //TODO determine recipient
-        let rec = extract_recipient(&order.description);
-        writeln!(of, "{}", Transaction::from_order(order, rec),)?;
-    }
-    let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
-    write!(
-        of,
-        "; {} grouped ebanking of {} (sum)\n",
-        sum,
-        chf_orders.len(),
-    )?;
-    if sum != stmtline.amount {
-        return Err(anyhow!(
-            "orders sum {} != {} aggregate statement amount",
-            sum,
-            stmtline.amount
-        ));
     }
     Ok(())
 }
@@ -118,7 +82,7 @@ pub fn first_after<'a>(
         .find(|&m| m.opening_balance.date >= opening_balance_date)
 }
 
-pub fn stmtlines_after_grouped<'a>(
+pub fn stmtlines_grouped_by_date_after<'a>(
     start_date: &'a NaiveDate,
     messages: &'a [Message],
 ) -> GroupBy<
@@ -144,6 +108,41 @@ pub fn stmtlines_after<'a>(
         .iter()
         .flat_map(|m| &m.statement_lines)
         .filter(move |s| &s.value_date >= start_date)
+}
+
+fn write_grouped_ebanking_orders(
+    of: &mut File,
+    stmtline: &StatementLine,
+    config: &Config,
+    date_to_payment: &HashMap<NaiveDate, Vec<Order>>,
+) -> Result<()> {
+    let date = &stmtline.value_date;
+    let all_orders = date_to_payment
+        .get(date)
+        .ok_or(anyhow!("no payments for grouped ebanking"))?;
+    let chf_orders: Vec<_> =
+        all_orders.iter().filter(|p| p.is_chf).collect();
+    for order in chf_orders.iter() {
+        // write!(of, "; {} {}\n", order.amount, &order.description)?;
+        let recipient = determine_recipient(&order.description,
+                                            config.interactive)?;
+        writeln!(of, "{}", Transaction::from_order(order, recipient),)?;
+    }
+    let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
+    write!(
+        of,
+        "; {} grouped ebanking of {} (sum)\n\n",
+        sum,
+        chf_orders.len(),
+    )?;
+    if sum != stmtline.amount {
+        return Err(anyhow!(
+            "orders sum {} != {} aggregate statement amount",
+            sum,
+            stmtline.amount
+        ));
+    }
+    Ok(())
 }
 
 fn write_stmtline(
@@ -247,8 +246,8 @@ impl<'a> fmt::Display for Transaction<'a> {
         write!(
             f,
             "{} {}
-  ; {}
-  ; {}
+  ; (dt) {}
+  ; (io)-{}-
   {}             {:?}
   Assets::Checking",
             self.date.format("%Y/%m/%d"),

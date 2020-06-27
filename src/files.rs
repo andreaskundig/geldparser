@@ -12,6 +12,7 @@ use std::io;
 use std::str::FromStr;
 use std::{collections::HashMap, ffi::OsString};
 
+#[derive(Debug)]
 pub struct Order {
     pub date: NaiveDate,
     pub amount: Decimal,
