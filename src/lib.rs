@@ -122,19 +122,16 @@ fn write_grouped_ebanking_orders(
         .ok_or(anyhow!("no payments for grouped ebanking"))?;
     let chf_orders: Vec<_> =
         all_orders.iter().filter(|p| p.is_chf).collect();
-    for order in chf_orders.iter() {
+    let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
+    let total_count = chf_orders.len();
+    write!(of, "; {} grouped ebanking of {} (sum)\n", sum, total_count)?;
+    for (count, order) in chf_orders.iter().enumerate() {
         // write!(of, "; {} {}\n", order.amount, &order.description)?;
         let recipient = determine_recipient(&order.description,
                                             config.interactive)?;
-        writeln!(of, "{}", Transaction::from_order(order, recipient),)?;
+        writeln!(of, "; {} of {}\n{}", count+1, total_count,
+                 Transaction::from_order(order, recipient),)?;
     }
-    let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
-    write!(
-        of,
-        "; {} grouped ebanking of {} (sum)\n\n",
-        sum,
-        chf_orders.len(),
-    )?;
     if sum != stmtline.amount {
         return Err(anyhow!(
             "orders sum {} != {} aggregate statement amount",
@@ -246,8 +243,8 @@ impl<'a> fmt::Display for Transaction<'a> {
         write!(
             f,
             "{} {}
-  ; (dt) {}
-  ; (io)-{}-
+  ; {}
+  ; {}
   {}             {:?}
   Assets::Checking",
             self.date.format("%Y/%m/%d"),
@@ -300,4 +297,17 @@ impl Config {
             output_filename,
         }
     }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn determine_recipient_maestro() {
+        let desc = "?ZKB:2218 Einkauf ZKB Maestro Karte Nr. 73817865, LE; POUSSE-POUSSE SARL 1205";
+        let recipient = determine_recipient(desc, false).unwrap();
+        println!("|{}|", recipient.name);
+        assert!(recipient.name == "LE; POUSSE-POUSSE SARL 1205");
+    }
+
 }

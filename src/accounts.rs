@@ -64,7 +64,8 @@ lazy_static! {
         Regex::new(r"eBanking +\(\d+\)").unwrap();
     static ref M_MAESTRO: Matcher<'static> = m1(
         Expenses(Maestro),
-        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*,(.*$)"
+        // (?s) allow . to match \n
+        r"(?s).*Einkauf ZKB Maestro Karte Nr. 73817865[^,]*, ?(.*$)"
     );
     static ref M_SIG: Matcher<'static> = m1(
         Expenses(Apartment(Electricity)),
@@ -72,7 +73,7 @@ lazy_static! {
     );
     static ref M_SINGLE_EBANKING: Matcher<'static> = m1(
         Expenses(Rest),
-        r"\?ZKB:2214 (.*); Gemaess Ihrem eBanking Auftrag.*"
+        r"(?s)\?ZKB:2214(.*)Gemaess Ihrem eBanking Auftrag.*"
     );
     pub static ref MATCHERS: Vec<&'static Matcher<'static>> =
         vec![&M_MAESTRO, &M_SIG, &M_SINGLE_EBANKING];
@@ -205,4 +206,37 @@ pub fn choose_account_from_command_line<'a>(
     disable_raw_mode()?;
 
     Ok(ACCOUNTS[selected])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn match_to_maestro_recipient(){
+        let desc = "?ZKB:2218 Einkauf ZKB Maestro Karte Nr. 73817865, LE; POUSSE-POUSSE SARL 1205";
+        let recipient = M_MAESTRO.match_to_recipient(desc).unwrap();
+        println!("|{}|", recipient.name);
+        assert!(recipient.account == Expenses(Maestro));
+        assert!(recipient.name == "LE; POUSSE-POUSSE SARL 1205");
+    }
+
+    #[test]
+    fn extract_maestro_recipient(){
+        let desc = "?ZKB:2218 Einkauf ZKB Maestro Karte Nr. 73817865, LE; POUSSE-POUSSE SARL 1205";
+        let recipient = extract_recipient(desc);
+        println!("|{}|", recipient.name);
+        assert!(recipient.account == Expenses(Maestro));
+        assert!(recipient.name == "LE; POUSSE-POUSSE SARL 1205");
+    }
+    
+    #[test]
+    fn match_to_single_ebanking_recipient(){
+        let desc = "?ZKB:2214 IV Mad\nAvenida\nES-28023 Madrid\nmaintenance\nGemaess Ihrem eBanking Auftrag BL---";
+        let recipient = M_SINGLE_EBANKING.match_to_recipient(desc).unwrap();
+        println!("|{}|", recipient.name);
+        assert!(recipient.account == Expenses(Rest));
+        assert!(recipient.name == " IV Mad\nAvenida\nES-28023 Madrid\nmaintenance\n");
+    }
+
 }
