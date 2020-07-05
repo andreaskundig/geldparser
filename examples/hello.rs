@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
-use calamine::{open_workbook, DataType, Ods, Reader};
+use calamine::DataType;
 use chrono::NaiveDate;
+use geldparser::odf_transactions::open_worksheet_range;
 
 fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
     row[1]
@@ -13,15 +14,8 @@ fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
 
 fn main() -> Result<()> {
     let path = "../Geld.ods"; // "../Geld-old.xlsx";
-    let mut workbook: Ods<_> =
-        open_workbook(path).expect("Cannot open file");
-    let names = workbook.sheet_names();
-    println!("sheets {:?}", names);
-
     let start_date = NaiveDate::from_ymd(2017, 12, 31);
-    let range = workbook
-        .worksheet_range("Ausgabe")
-        .ok_or(anyhow!("Cannot find 'Ausgabe'"))??;
+    let range = open_worksheet_range(path)?;
     range
         .rows()
         .skip(1)

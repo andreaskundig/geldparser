@@ -19,8 +19,9 @@ use std::{
     borrow::Cow, collections::HashMap, fmt, fs, fs::File, io::prelude::*,
 };
 pub mod accounts;
-pub mod files;
-use crate::files::{ebanking_payments, Order};
+pub mod csv_orders;
+pub mod odf_transactions;
+use crate::csv_orders::{ebanking_payments, Order};
 use anyhow::{anyhow, Result};
 use failure::Fail;
 use itertools::{structs::GroupBy, Itertools};
