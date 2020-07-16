@@ -16,7 +16,7 @@ pub fn open_worksheet_range(path: &str) -> Result<Range<DataType>> {
         .map_err(Error::new)
 }
 
-fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
+pub fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
     row[1]
         .get_string()
         .map(|date_str| {
@@ -25,7 +25,7 @@ fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
         .flatten()
 }
 
-fn rows_after(date: NaiveDate, range: &Range<DataType>) -> Result<HashMap<NaiveDate, Vec<&[DataType]>>>{
+pub fn build_map_after(date: NaiveDate, range: &Range<DataType>) -> Result<HashMap<NaiveDate, Vec<&[DataType]>>>{
     let map_entries = range
         .rows()
         .skip(1)

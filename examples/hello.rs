@@ -1,21 +1,23 @@
 use anyhow::{anyhow, Result};
 use calamine::DataType;
 use chrono::NaiveDate;
-use geldparser::odf_transactions::open_worksheet_range;
+use geldparser::odf_transactions::{
+    build_map_after, extract_date, open_worksheet_range,
+};
 
-fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
-    row[1]
-        .get_string()
-        .map(|date_str| {
-            NaiveDate::parse_from_str(date_str, "%Y-%m-%d").ok()
-        })
-        .flatten()
+fn print_row(row: &[DataType]) -> Result<()> {
+    let date = extract_date(row).ok_or(anyhow!("no date"))?;
+    let amount = row[4].get_float().ok_or(anyhow!("no amount"))?;
+    let desc = row[7].get_string().unwrap_or("");
+    println!("{:?} {:?} {:?}", date, amount, desc);
+    Ok(())
 }
 
 fn main() -> Result<()> {
     let path = "../Geld.ods"; // "../Geld-old.xlsx";
     let start_date = NaiveDate::from_ymd(2017, 12, 31);
     let range = open_worksheet_range(path)?;
+    let mut last_date = None;
     range
         .rows()
         .skip(1)
@@ -26,9 +28,21 @@ fn main() -> Result<()> {
         .take(10)
         .map(|row| -> Result<()> {
             let date = extract_date(row).ok_or(anyhow!("no date"))?;
-            let amount = row[4].get_float().ok_or(anyhow!("no amount"))?;
-            let desc = row[7].get_string().unwrap_or("");
-            println!("{:?} {:?} {:?}", date, amount, desc);
+            print_row(row)?;
+            // let amount = row[4].get_float().ok_or(anyhow!("no amount"))?;
+            // let desc = row[7].get_string().unwrap_or("");
+            // println!("{:?} {:?} {:?}", date, amount, desc);
+            last_date = Some(date);
             Ok(())
-        }).collect()
+        })
+        .collect::<Result<()>>()?;
+
+    let range = open_worksheet_range(path)?;
+    let map = build_map_after(start_date, &range)?;
+    let some_date = map.keys().last(); //.ok_or(anyhow!("no last date"))?;
+    let query_date =
+        last_date.as_ref().or(some_date).ok_or(anyhow!("no last date"))?;
+    let rows = map.get(query_date).ok_or(anyhow!("no rows"))?;
+    let row = rows.get(0).ok_or(anyhow!("no row"))?;
+    print_row(row)
 }
