@@ -25,13 +25,13 @@ pub fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
         .flatten()
 }
 
-pub fn build_map_after(date: NaiveDate, range: &Range<DataType>) -> Result<HashMap<NaiveDate, Vec<&[DataType]>>>{
+pub fn build_map_after<'a,'b>(date: &'a NaiveDate, range: &'b Range<DataType>) -> Result<HashMap<NaiveDate, Vec<&'b[DataType]>>>{
     let map_entries = range
         .rows()
         .skip(1)
         .filter(|row| {
             let date_o = extract_date(row);
-            date_o.map(|d| d >= date).unwrap_or(false)
+            date_o.map(|d| d >= *date).unwrap_or(false)
         })
         .map(|row| -> Result<(NaiveDate, &[DataType])>{
             let date = extract_date(row).ok_or(anyhow!("no date"))?;

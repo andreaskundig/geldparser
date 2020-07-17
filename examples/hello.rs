@@ -13,9 +13,15 @@ fn print_row(row: &[DataType]) -> Result<()> {
     Ok(())
 }
 
+// fn old_booked_payments(start_date: &NaiveDate) -> Result<HashMap<NaiveDate, Vec<&[DataType]>>> {
+//     let path = "../Geld.ods";
+//     let range = open_worksheet_range(path)?;
+//     build_map_after(start_date, &range)
+// }
+
 fn main() -> Result<()> {
-    let path = "../Geld.ods"; // "../Geld-old.xlsx";
     let start_date = NaiveDate::from_ymd(2017, 12, 31);
+    let path = "../Geld.ods";
     let range = open_worksheet_range(path)?;
     let mut last_date = None;
     range
@@ -38,7 +44,7 @@ fn main() -> Result<()> {
         .collect::<Result<()>>()?;
 
     let range = open_worksheet_range(path)?;
-    let map = build_map_after(start_date, &range)?;
+    let map = build_map_after(&start_date, &range)?;
     let some_date = map.keys().last(); //.ok_or(anyhow!("no last date"))?;
     let query_date =
         last_date.as_ref().or(some_date).ok_or(anyhow!("no last date"))?;

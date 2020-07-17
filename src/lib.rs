@@ -28,6 +28,7 @@ use itertools::{structs::GroupBy, Itertools};
 
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
+    let start_date = NaiveDate::from_ymd(2019, 01, 01);
     let date_to_payment = ebanking_payments()?;
     let input_filename = &config.input_filename;
     let mut of = File::create(&config.output_filename)?;
@@ -35,7 +36,6 @@ pub fn run(config: Config) -> Result<()> {
     writeln!(of, "; {:?}\n", input_filename)?;
     let messages = parse_messages(&input_filename)?;
 
-    let start_date = NaiveDate::from_ymd(2019, 01, 01);
 
     first_after(&start_date, &messages)
         .map(|message| {
