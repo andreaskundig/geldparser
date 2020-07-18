@@ -25,7 +25,18 @@ pub fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
         .flatten()
 }
 
-pub fn build_map_after<'a,'b>(date: &'a NaiveDate, range: &'b Range<DataType>) -> Result<HashMap<NaiveDate, Vec<&'b[DataType]>>>{
+pub type RowTuple = (f64,String);
+pub fn extract_tuple(row: &[DataType]) -> RowTuple{
+    let desc = row[7].get_string().unwrap_or("");
+    let amount_o: Option<f64> = row[4].get_float();
+    if amount_o.is_none() {
+        println!("Missing amount in row {:?}", row);
+    }
+    let amount = amount_o.unwrap_or(0.0);
+    (amount, String::from(desc))
+}
+
+pub fn build_map_after<'a,'b>(date: &'a NaiveDate, range: &'b Range<DataType>) -> Result<HashMap<NaiveDate, Vec<RowTuple>>>{
     let map_entries = range
         .rows()
         .skip(1)
@@ -33,11 +44,16 @@ pub fn build_map_after<'a,'b>(date: &'a NaiveDate, range: &'b Range<DataType>) -
             let date_o = extract_date(row);
             date_o.map(|d| d >= *date).unwrap_or(false)
         })
-        .map(|row| -> Result<(NaiveDate, &[DataType])>{
+        .map(|row| -> Result<(NaiveDate, RowTuple)>{
             let date = extract_date(row).ok_or(anyhow!("no date"))?;
-            Ok((date, row))
+            Ok((date, extract_tuple(row)))
         })
-        .collect::<Result<Vec<(NaiveDate, &[DataType])>>>()?;
+        .collect::<Result<Vec<(NaiveDate, RowTuple)>>>()?;
     Ok(map_entries.into_iter().into_group_map())
 }
-// pub fn build_map(range: Range<DataType>) -> Result<HashMap<NaiveDate,Vec<>>>
+
+pub fn old_booked_payments(start_date: &NaiveDate) -> Result<HashMap<NaiveDate, Vec<RowTuple>>> {
+    let path = "../Geld.ods";
+    let range = open_worksheet_range(path)?;
+    build_map_after(start_date, &range)
+}
