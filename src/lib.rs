@@ -7,14 +7,14 @@ extern crate regex;
 extern crate rust_decimal;
 use crate::accounts::choose_account_from_command_line;
 use crate::accounts::{
-    extract_recipient, is_grouped_ebanking_details, Account::*,
-    Eequity::*, Recipient,
+    extract_recipient, Account::*, Eequity::*, Recipient,
+    R_GROUPED_EBANKING, R_GROUPED_EBILL,
 };
 use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
-use rust_decimal::Decimal;
+use rust_decimal::{prelude::ToPrimitive, Decimal};
 use std::{
     borrow::Cow, collections::HashMap, fmt, fs, fs::File, io::prelude::*,
 };
@@ -22,6 +22,7 @@ pub mod accounts;
 pub mod csv_orders;
 pub mod odf_transactions;
 use crate::csv_orders::{ebanking_payments, Order};
+use crate::odf_transactions::old_booked_payments;
 use anyhow::{anyhow, Result};
 use failure::Fail;
 use itertools::{structs::GroupBy, Itertools};
@@ -30,12 +31,12 @@ use itertools::{structs::GroupBy, Itertools};
 pub fn run(config: Config) -> Result<()> {
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
     let date_to_payment = ebanking_payments()?;
+    let date_to_old_payments = old_booked_payments(&start_date)?;
     let input_filename = &config.input_filename;
     let mut of = File::create(&config.output_filename)?;
     println!("; {} -> {}", input_filename, &config.output_filename);
     writeln!(of, "; {:?}\n", input_filename)?;
     let messages = parse_messages(&input_filename)?;
-
 
     first_after(&start_date, &messages)
         .map(|message| {
@@ -44,9 +45,36 @@ pub fn run(config: Config) -> Result<()> {
         .unwrap_or(Ok(()))?;
 
     let grouped = &stmtlines_grouped_by_date_after(&start_date, &messages);
-    for (_date, stmtlines_group) in grouped {
+    for (date, stmtlines_group) in grouped {
+        // TODO match with old_payments
+        // TODO map sum to old payment
+        // TODO collect old payments that don't match new ones,
+        // TODO try to match them to ebill payments
+        let mut unmatched_o = date_to_old_payments.get(&date);
         for stmtline in stmtlines_group {
-            if is_grouped_ebanking(stmtline) {
+            // TODO discard unambiguous sums
+            let amount = stmtline.amount;
+            if let Some(ref mut unmatched) = unmatched_o {
+                let pos_o = unmatched.iter().position(|(a, _)| {
+                    // AAAAAAAAAAAAAAAAAAAARRRRRRRRRRRRGH
+                    amount
+                        .to_f32()
+                        .and_then(|a32| a32.to_f64())
+                        .map(|a64| &a64 == a)
+                        .unwrap_or(false)
+                });
+                if let Some(pos) = pos_o {
+                    // WTFFFFFFFFFFFFFFFFFF
+                    unmatched
+                        .into_iter()
+                        .nth(pos)
+                        .and_then(|pmt| {
+                            Some(writeln!(&mut of, "; old pmt {:?}", pmt))
+                        })
+                        .unwrap_or(Ok(()))?;
+                }
+            }
+            if details_match(stmtline, &R_GROUPED_EBANKING) {
                 write_grouped_ebanking_orders(
                     &mut of,
                     stmtline,
@@ -54,18 +82,32 @@ pub fn run(config: Config) -> Result<()> {
                     &date_to_payment,
                 )?;
             } else {
+                if details_match(stmtline, &R_GROUPED_EBILL) {
+                    let p_count = date_to_old_payments
+                        .get(&date)
+                        .map(|ps| ps.len())
+                        .unwrap_or(0);
+                    writeln!(&mut of, "; ebill group of {}", p_count)?;
+                }
                 write_stmtline(&mut of, stmtline, &config)?;
             }
         }
+        unmatched_o
+            .and_then(|unm| {
+                Some(writeln!(&mut of, "; unmatched {:?}", unm))
+            })
+            .unwrap_or(Ok(()))?;
     }
     Ok(())
 }
 
-fn is_grouped_ebanking(stmtline: &StatementLine) -> bool {
-    match stmtline.supplementary_details.as_ref() {
-        Some(details) => is_grouped_ebanking_details(details),
-        None => false,
-    }
+fn details_match(stmtline: &StatementLine, regex: &Regex) -> bool {
+    let cls = |details: &String| regex.is_match(details);
+    stmtline
+        .supplementary_details
+        .as_ref()
+        .map(cls)
+        .unwrap_or(false)
 }
 
 pub fn parse_messages(input_filename: &str) -> Result<Vec<Message>> {
@@ -128,10 +170,15 @@ fn write_grouped_ebanking_orders(
     write!(of, "; {} grouped ebanking of {} (sum)\n", sum, total_count)?;
     for (count, order) in chf_orders.iter().enumerate() {
         // write!(of, "; {} {}\n", order.amount, &order.description)?;
-        let recipient = determine_recipient(&order.description,
-                                            config.interactive)?;
-        writeln!(of, "; {} of {}\n{}", count+1, total_count,
-                 Transaction::from_order(order, recipient),)?;
+        let recipient =
+            determine_recipient(&order.description, config.interactive)?;
+        writeln!(
+            of,
+            "; {} of {}\n{}",
+            count + 1,
+            total_count,
+            Transaction::from_order(order, recipient),
+        )?;
     }
     if sum != stmtline.amount {
         return Err(anyhow!(
@@ -302,7 +349,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn determine_recipient_maestro() {
         let desc = "?ZKB:2218 Einkauf ZKB Maestro Karte Nr. 73817865, LE; POUSSE-POUSSE SARL 1205";
@@ -310,5 +357,4 @@ mod tests {
         println!("|{}|", recipient.name);
         assert!(recipient.name == "LE; POUSSE-POUSSE SARL 1205");
     }
-
 }
