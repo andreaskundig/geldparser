@@ -27,11 +27,17 @@ use anyhow::{anyhow, Result};
 use failure::Fail;
 use itertools::{structs::GroupBy, Itertools};
 
+fn f64_to_decimal(to_convert: f64) -> Decimal {
+    let rounded = (to_convert * 100.0).floor() as i64;
+    let scale = 2_u32;
+    Decimal::new(rounded, scale)
+}
+
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
     let date_to_payment = ebanking_payments()?;
-    let date_to_old_payments = old_booked_payments(&start_date)?;
+    let mut date_to_old_payments = old_booked_payments(&start_date)?;
     let input_filename = &config.input_filename;
     let mut of = File::create(&config.output_filename)?;
     println!("; {} -> {}", input_filename, &config.output_filename);
@@ -50,28 +56,20 @@ pub fn run(config: Config) -> Result<()> {
         // TODO map sum to old payment
         // TODO collect old payments that don't match new ones,
         // TODO try to match them to ebill payments
-        let mut unmatched_o = date_to_old_payments.get(&date);
+
+        //
+        let mut old_payments_o = date_to_old_payments.get_mut(&date);
         for stmtline in stmtlines_group {
             // TODO discard unambiguous sums
-            let amount = stmtline.amount;
-            if let Some(ref mut unmatched) = unmatched_o {
-                let pos_o = unmatched.iter().position(|(a, _)| {
-                    // AAAAAAAAAAAAAAAAAAAARRRRRRRRRRRRGH
-                    amount
-                        .to_f32()
-                        .and_then(|a32| a32.to_f64())
-                        .map(|a64| &a64 == a)
-                        .unwrap_or(false)
-                });
+            let amount: Decimal = stmtline.amount;
+            if let Some(ref mut old_payments) = old_payments_o {
+                // position of matching old payment
+                let pos_o = old_payments
+                    .iter()
+                    .position(|(a, _)| amount == f64_to_decimal(*a));
                 if let Some(pos) = pos_o {
-                    // WTFFFFFFFFFFFFFFFFFF
-                    unmatched
-                        .into_iter()
-                        .nth(pos)
-                        .and_then(|pmt| {
-                            Some(writeln!(&mut of, "; old pmt {:?}", pmt))
-                        })
-                        .unwrap_or(Ok(()))?;
+                    let old_pmt = old_payments.remove(pos);
+                    writeln!(&mut of, "; old pmt {:?}", old_pmt)?;
                 }
             }
             if details_match(stmtline, &R_GROUPED_EBANKING) {
@@ -83,8 +81,8 @@ pub fn run(config: Config) -> Result<()> {
                 )?;
             } else {
                 if details_match(stmtline, &R_GROUPED_EBILL) {
-                    let p_count = date_to_old_payments
-                        .get(&date)
+                    let p_count = old_payments_o
+                        .as_ref()
                         .map(|ps| ps.len())
                         .unwrap_or(0);
                     writeln!(&mut of, "; ebill group of {}", p_count)?;
@@ -92,7 +90,7 @@ pub fn run(config: Config) -> Result<()> {
                 write_stmtline(&mut of, stmtline, &config)?;
             }
         }
-        unmatched_o
+        old_payments_o
             .and_then(|unm| {
                 Some(writeln!(&mut of, "; unmatched {:?}", unm))
             })
