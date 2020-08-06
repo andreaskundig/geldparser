@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
 use regex::Regex;
-use rust_decimal::{prelude::ToPrimitive, Decimal};
+use rust_decimal::Decimal;
 use std::{
     borrow::Cow, collections::HashMap, fmt, fs, fs::File, io::prelude::*,
 };
@@ -69,7 +69,11 @@ pub fn run(config: Config) -> Result<()> {
                     .position(|(a, _)| amount == f64_to_decimal(*a));
                 if let Some(pos) = pos_o {
                     let old_pmt = old_payments.remove(pos);
-                    writeln!(&mut of, "; old pmt {:?}", old_pmt)?;
+                    writeln!(
+                        &mut of,
+                        "; old pmt on {}: {:?}",
+                        date, old_pmt
+                    )?;
                 }
             }
             if details_match(stmtline, &R_GROUPED_EBANKING) {
@@ -81,18 +85,29 @@ pub fn run(config: Config) -> Result<()> {
                 )?;
             } else {
                 if details_match(stmtline, &R_GROUPED_EBILL) {
+                    //TODO put aside and process the rest of the group first
                     let p_count = old_payments_o
                         .as_ref()
                         .map(|ps| ps.len())
                         .unwrap_or(0);
                     writeln!(&mut of, "; ebill group of {}", p_count)?;
+                    old_payments_o
+                        .take()
+                        .and_then(|remaining| {
+                            Some(writeln!(
+                                &mut of,
+                                "; ebill? {} {:?}\n",
+                                date, remaining
+                            ))
+                        })
+                        .unwrap_or(Ok(()))?;
                 }
                 write_stmtline(&mut of, stmtline, &config)?;
             }
         }
         old_payments_o
             .and_then(|unm| {
-                Some(writeln!(&mut of, "; unmatched {:?}", unm))
+                Some(writeln!(&mut of, "; unmatched {} {:?}\n", date, unm))
             })
             .unwrap_or(Ok(()))?;
     }

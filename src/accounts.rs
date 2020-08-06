@@ -135,7 +135,7 @@ pub fn extract_recipient(owner_info: &str) -> Recipient {
     MATCHERS
         .iter()
         .find_map(|m| m.match_to_recipient(owner_info))
-        .unwrap_or_else({ || rest_recipient(owner_info) })
+        .unwrap_or_else(|| rest_recipient(owner_info))
 }
 
 pub fn choose_account_from_command_line<'a>(
