@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result, Error};
 use calamine::{open_workbook, DataType, Ods, Range, Reader};
 use chrono::NaiveDate;
 use std::collections::HashMap;
+use rust_decimal::Decimal;
 use itertools::Itertools;
 
 pub fn open_worksheet_range(path: &str) -> Result<Range<DataType>> {
@@ -25,14 +26,20 @@ pub fn extract_date(row: &[DataType]) -> Option<NaiveDate> {
         .flatten()
 }
 
-pub type RowTuple = (f64,String);
+fn f64_to_decimal(to_convert: f64) -> Decimal {
+    let rounded = (to_convert * 100.0).floor() as i64;
+    let scale = 2_u32;
+    Decimal::new(rounded, scale)
+}
+
+pub type RowTuple = (Decimal,String);
 pub fn extract_tuple(row: &[DataType]) -> RowTuple{
     let desc = row[7].get_string().unwrap_or("");
     let amount_o: Option<f64> = row[4].get_float();
     if amount_o.is_none() {
         println!("Missing amount in row {:?}", row);
     }
-    let amount = amount_o.unwrap_or(0.0);
+    let amount = f64_to_decimal(amount_o.unwrap_or(0.0));
     (amount, String::from(desc))
 }
 

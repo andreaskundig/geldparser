@@ -27,12 +27,6 @@ use anyhow::{anyhow, Result};
 use failure::Fail;
 use itertools::{structs::GroupBy, Itertools};
 
-fn f64_to_decimal(to_convert: f64) -> Decimal {
-    let rounded = (to_convert * 100.0).floor() as i64;
-    let scale = 2_u32;
-    Decimal::new(rounded, scale)
-}
-
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
@@ -61,20 +55,14 @@ pub fn run(config: Config) -> Result<()> {
         let mut old_payments_o = date_to_old_payments.get_mut(&date);
         for stmtline in stmtlines_group {
             // TODO discard unambiguous sums
-            let amount: Decimal = stmtline.amount;
-            if let Some(ref mut old_payments) = old_payments_o {
-                // position of matching old payment
-                let pos_o = old_payments
-                    .iter()
-                    .position(|(a, _)| amount == f64_to_decimal(*a));
-                if let Some(pos) = pos_o {
-                    let old_pmt = old_payments.remove(pos);
-                    writeln!(
-                        &mut of,
-                        "; old pmt on {}: {:?}",
-                        date, old_pmt
-                    )?;
-                }
+            let amount: &Decimal = &stmtline.amount;
+            let old_pmt_o = old_payments_o.as_mut().and_then(|ops| {
+                ops.iter()
+                    .position(|(a, _)| amount == a)
+                    .and_then(|pos| Some(ops.remove(pos)))
+            });
+            if let Some(op) = old_pmt_o {
+                writeln!(&mut of, "; old pmt on {}: {:?}", date, op)?;
             }
             if details_match(stmtline, &R_GROUPED_EBANKING) {
                 write_grouped_ebanking_orders(
