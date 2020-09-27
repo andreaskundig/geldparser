@@ -41,18 +41,23 @@ impl Order {
     }
 }
 
-pub fn ebanking_payments() -> Result<HashMap<NaiveDate, Vec<Order>>> {
+pub fn ebanking_payments_from_csvs(
+) -> Result<HashMap<NaiveDate, Vec<Order>>> {
     let paths = fs::read_dir("../bewegungen/pain")?
         .map(|res| res.map(|e| e.path().into_os_string()))
         .filter(|n| match n {
-            Ok(filename) => filename.to_string_lossy().contains("Aufträge "),
+            Ok(filename) => {
+                filename.to_string_lossy().contains("Aufträge ")
+            }
             _ => false,
         })
         .collect::<Result<Vec<_>, io::Error>>()?;
     build_map(&paths)
 }
 
-fn build_map(paths: &Vec<OsString>) -> Result<HashMap<NaiveDate, Vec<Order>>> {
+fn build_map(
+    paths: &Vec<OsString>,
+) -> Result<HashMap<NaiveDate, Vec<Order>>> {
     let files = paths
         .iter()
         .map(File::open)

@@ -21,7 +21,7 @@ use std::{
 pub mod accounts;
 pub mod csv_orders;
 pub mod odf_transactions;
-use crate::csv_orders::{ebanking_payments, Order};
+use crate::csv_orders::{ebanking_payments_from_csvs, Order};
 use crate::odf_transactions::old_booked_payments;
 use anyhow::{anyhow, Result};
 use failure::Fail;
@@ -30,7 +30,9 @@ use itertools::{structs::GroupBy, Itertools};
 // pub fn run(config: Config){
 pub fn run(config: Config) -> Result<()> {
     let start_date = NaiveDate::from_ymd(2019, 01, 01);
-    let date_to_payment = ebanking_payments()?;
+    // data from bank for disaggregating ebanking payments
+    let date_to_payment = ebanking_payments_from_csvs()?;
+    // data from my records to help disaggregate ebill payments
     let mut date_to_old_payments = old_booked_payments(&start_date)?;
     let input_filename = &config.input_filename;
     let mut of = File::create(&config.output_filename)?;
@@ -46,58 +48,75 @@ pub fn run(config: Config) -> Result<()> {
 
     let grouped = &stmtlines_grouped_by_date_after(&start_date, &messages);
     for (date, stmtlines_group) in grouped {
-        // TODO match with old_payments
-        // TODO map sum to old payment
-        // TODO collect old payments that don't match new ones,
-        // TODO try to match them to ebill payments
+        // grouped contains all stmtlines for a date
 
-        //
-        let mut old_payments_o = date_to_old_payments.get_mut(&date);
+        let mut processed_transactions = Vec::new();
+        let mut ebill_stmtlines = Vec::new();
         for stmtline in stmtlines_group {
-            // TODO discard unambiguous sums
-            let amount: &Decimal = &stmtline.amount;
-            let old_pmt_o = old_payments_o.as_mut().and_then(|ops| {
-                ops.iter()
-                    .position(|(a, _)| amount == a)
-                    .and_then(|pos| Some(ops.remove(pos)))
-            });
-            if let Some(op) = old_pmt_o {
-                writeln!(&mut of, "; old pmt on {}: {:?}", date, op)?;
-            }
             if details_match(stmtline, &R_GROUPED_EBANKING) {
-                write_grouped_ebanking_orders(
+                // ebanking payments are disaggregated with data from csvs
+                let found_transactions = write_grouped_ebanking_orders(
                     &mut of,
                     stmtline,
                     &config,
                     &date_to_payment,
                 )?;
+                processed_transactions.extend(found_transactions);
+            } else if details_match(stmtline, &R_GROUPED_EBILL) {
+                // ebills need to be disaggregated later
+                ebill_stmtlines.push(stmtline);
             } else {
-                if details_match(stmtline, &R_GROUPED_EBILL) {
-                    //TODO put aside and process the rest of the group first
-                    let p_count = old_payments_o
-                        .as_ref()
-                        .map(|ps| ps.len())
-                        .unwrap_or(0);
-                    writeln!(&mut of, "; ebill group of {}", p_count)?;
-                    old_payments_o
-                        .take()
-                        .and_then(|remaining| {
-                            Some(writeln!(
-                                &mut of,
-                                "; ebill? {} {:?}\n",
-                                date, remaining
-                            ))
-                        })
-                        .unwrap_or(Ok(()))?;
-                }
-                write_stmtline(&mut of, stmtline, &config)?;
+                let t = write_stmtline(&mut of, stmtline, &config)?;
+                processed_transactions.push(t);
             }
         }
-        old_payments_o
-            .and_then(|unm| {
-                Some(writeln!(&mut of, "; unmatched {} {:?}\n", date, unm))
-            })
-            .unwrap_or(Ok(()))?;
+        
+        // payments from the old csv file
+        let old_payments_o = date_to_old_payments.get_mut(&date);
+        if let Some(old_payments) = old_payments_o {
+            // try to match processed transactions to old_payments_o
+            // remove unambiguous matches
+            for processed_transaction in processed_transactions {
+                let amount = &processed_transaction.amount;
+                let matching =
+                    old_payments.iter().filter(|(a, _)| a == amount);
+                if matching.count() == 1 {
+                    // discard the matching payment
+                    let old_pmt_o = old_payments
+                        .iter()
+                        .position(|(a, _)| amount == a)
+                        .and_then(|pos| Some(old_payments.remove(pos)));
+                    if let Some(op) = old_pmt_o {
+                        writeln!(
+                            &mut of,
+                            "; already processed old pmt on {}: {:?}",
+                            date, op
+                        )?;
+                    }
+                }
+            }
+
+            for ebill_stmtline in ebill_stmtlines {
+                // use the ebill regex to extract the number of payments
+                
+                //TODO extract payment count and sum from ebill_stmtline
+                // if both match unambiguously with old payments
+                // write the disaggregated payments to output
+                writeln!(
+                    &mut of,
+                    "; ebill ({}) for {} {:?}\n",
+                    old_payments.len(),
+                    date,
+                    old_payments
+                )?;
+                write_stmtline(&mut of, ebill_stmtline, &config)?;
+            }
+        } else {
+            // nothing to match
+            for ebill_stmtline in ebill_stmtlines {
+                write_stmtline(&mut of, ebill_stmtline, &config)?;
+            }
+        }
     }
     Ok(())
 }
@@ -154,12 +173,12 @@ pub fn stmtlines_after<'a>(
         .filter(move |s| &s.value_date >= start_date)
 }
 
-fn write_grouped_ebanking_orders(
+fn write_grouped_ebanking_orders<'a>(
     of: &mut File,
     stmtline: &StatementLine,
     config: &Config,
-    date_to_payment: &HashMap<NaiveDate, Vec<Order>>,
-) -> Result<()> {
+    date_to_payment: &'a HashMap<NaiveDate, Vec<Order>>,
+) -> Result<Vec<Transaction<'a>>> {
     let date = &stmtline.value_date;
     let all_orders = date_to_payment
         .get(date)
@@ -169,16 +188,24 @@ fn write_grouped_ebanking_orders(
     let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
     let total_count = chf_orders.len();
     write!(of, "; {} grouped ebanking of {} (sum)\n", sum, total_count)?;
-    for (count, order) in chf_orders.iter().enumerate() {
+    let transactions = chf_orders
+        .iter()
+        .map(|&order| {
+            let recipient = determine_recipient(
+                &order.description,
+                config.interactive,
+            )?;
+            Ok(Transaction::from_order(order, recipient))
+        })
+        .collect::<Result<Vec<Transaction>>>()?;
+    for (count, transaction) in transactions.iter().enumerate() {
         // write!(of, "; {} {}\n", order.amount, &order.description)?;
-        let recipient =
-            determine_recipient(&order.description, config.interactive)?;
         writeln!(
             of,
             "; {} of {}\n{}",
             count + 1,
             total_count,
-            Transaction::from_order(order, recipient),
+            transaction
         )?;
     }
     if sum != stmtline.amount {
@@ -188,19 +215,19 @@ fn write_grouped_ebanking_orders(
             stmtline.amount
         ));
     }
-    Ok(())
+    Ok(transactions)
 }
 
-fn write_stmtline(
+fn write_stmtline<'a>(
     output_file: &mut File,
-    statement: &StatementLine,
+    statement: &'a StatementLine,
     config: &Config,
-) -> Result<()> {
+) -> Result<Transaction<'a>> {
     let owner_info = extract_info_to_owner(statement).unwrap_or("");
     let recipient = determine_recipient(owner_info, config.interactive)?;
     let transaction = Transaction::new(statement, recipient);
     writeln!(output_file, "{}\n", transaction)?;
-    Ok(())
+    Ok(transaction)
 }
 
 fn determine_recipient(
