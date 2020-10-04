@@ -55,22 +55,24 @@ pub fn run(config: Config) -> Result<()> {
         for stmtline in stmtlines_group {
             if details_match(stmtline, &R_GROUPED_EBANKING) {
                 // ebanking payments are disaggregated with data from csvs
-                let found_transactions = write_grouped_ebanking_orders(
-                    &mut of,
-                    stmtline,
-                    &config,
-                    &date_to_payment,
-                )?;
+                let found_transactions =
+                    transactions_from_grouped_ebanking_orders(
+                        stmtline,
+                        &config,
+                        &date_to_payment,
+                    )?;
+                write_ebanking_transactions(&mut of, &found_transactions)?;
                 processed_transactions.extend(found_transactions);
             } else if details_match(stmtline, &R_GROUPED_EBILL) {
                 // ebills need to be disaggregated later
                 ebill_stmtlines.push(stmtline);
             } else {
-                let t = write_stmtline(&mut of, stmtline, &config)?;
+                let t = transaction_from_stmtline(stmtline, &config)?;
+                writeln!(&mut of, "{}\n", t)?;
                 processed_transactions.push(t);
             }
         }
-        
+
         // payments from the old csv file
         let old_payments_o = date_to_old_payments.get_mut(&date);
         if let Some(old_payments) = old_payments_o {
@@ -98,8 +100,8 @@ pub fn run(config: Config) -> Result<()> {
 
             for ebill_stmtline in ebill_stmtlines {
                 // use the ebill regex to extract the number of payments
-                
-                //TODO extract payment count and sum from ebill_stmtline
+                let target_sum = ebill_stmtline.amount;
+                //TODO extract payment count and sum from ebill_stmtlines
                 // if both match unambiguously with old payments
                 // write the disaggregated payments to output
                 writeln!(
@@ -109,12 +111,16 @@ pub fn run(config: Config) -> Result<()> {
                     date,
                     old_payments
                 )?;
-                write_stmtline(&mut of, ebill_stmtline, &config)?;
+                let t =
+                    transaction_from_stmtline(ebill_stmtline, &config)?;
+                writeln!(&mut of, "{}\n", t)?;
             }
         } else {
             // nothing to match
             for ebill_stmtline in ebill_stmtlines {
-                write_stmtline(&mut of, ebill_stmtline, &config)?;
+                let t =
+                    transaction_from_stmtline(ebill_stmtline, &config)?;
+                writeln!(&mut of, "{}\n", t)?;
             }
         }
     }
@@ -173,8 +179,7 @@ pub fn stmtlines_after<'a>(
         .filter(move |s| &s.value_date >= start_date)
 }
 
-fn write_grouped_ebanking_orders<'a>(
-    of: &mut File,
+fn transactions_from_grouped_ebanking_orders<'a>(
     stmtline: &StatementLine,
     config: &Config,
     date_to_payment: &'a HashMap<NaiveDate, Vec<Order>>,
@@ -186,8 +191,6 @@ fn write_grouped_ebanking_orders<'a>(
     let chf_orders: Vec<_> =
         all_orders.iter().filter(|p| p.is_chf).collect();
     let sum = chf_orders.iter().map(|s| s.amount).sum::<Decimal>();
-    let total_count = chf_orders.len();
-    write!(of, "; {} grouped ebanking of {} (sum)\n", sum, total_count)?;
     let transactions = chf_orders
         .iter()
         .map(|&order| {
@@ -198,16 +201,6 @@ fn write_grouped_ebanking_orders<'a>(
             Ok(Transaction::from_order(order, recipient))
         })
         .collect::<Result<Vec<Transaction>>>()?;
-    for (count, transaction) in transactions.iter().enumerate() {
-        // write!(of, "; {} {}\n", order.amount, &order.description)?;
-        writeln!(
-            of,
-            "; {} of {}\n{}",
-            count + 1,
-            total_count,
-            transaction
-        )?;
-    }
     if sum != stmtline.amount {
         return Err(anyhow!(
             "orders sum {} != {} aggregate statement amount",
@@ -218,15 +211,33 @@ fn write_grouped_ebanking_orders<'a>(
     Ok(transactions)
 }
 
-fn write_stmtline<'a>(
-    output_file: &mut File,
+fn write_ebanking_transactions<'a>(
+    of: &mut File,
+    transactions: &Vec<Transaction<'a>>,
+) -> Result<()> {
+    let sum = transactions.iter().map(|t| t.amount).sum::<Decimal>();
+    let total_count = transactions.len();
+    write!(of, "; {} grouped ebanking of {} (sum)\n", sum, total_count)?;
+    for (count, transaction) in transactions.iter().enumerate() {
+        // write!(of, "; {} {}\n", order.amount, &order.description)?;
+        writeln!(
+            of,
+            "; {} of {}\n{}",
+            count + 1,
+            total_count,
+            transaction
+        )?;
+    }
+    Ok(())
+}
+
+fn transaction_from_stmtline<'a>(
     statement: &'a StatementLine,
     config: &Config,
 ) -> Result<Transaction<'a>> {
     let owner_info = extract_info_to_owner(statement).unwrap_or("");
     let recipient = determine_recipient(owner_info, config.interactive)?;
     let transaction = Transaction::new(statement, recipient);
-    writeln!(output_file, "{}\n", transaction)?;
     Ok(transaction)
 }
 
