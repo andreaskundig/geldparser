@@ -61,7 +61,7 @@ pub const ACCOUNTS: [Account; 3] = [
 
 lazy_static! {
     pub static ref R_GROUPED_EBILL: Regex =
-        Regex::new(r"eBill +\(\d+\)").unwrap();
+        Regex::new(r"eBill +\((\d+)\)").unwrap();
     pub static ref R_GROUPED_EBANKING: Regex =
         Regex::new(r"eBanking +\(\d+\)").unwrap();
     static ref M_MAESTRO: Matcher<'static> = m1(

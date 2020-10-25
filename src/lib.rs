@@ -48,7 +48,7 @@ pub fn run(config: Config) -> Result<()> {
 
     let grouped = &stmtlines_grouped_by_date_after(&start_date, &messages);
     for (date, stmtlines_group) in grouped {
-        // grouped contains all stmtlines for a date
+        // group contains all stmtlines for a date
 
         let mut processed_transactions = Vec::new();
         let mut ebill_stmtlines = Vec::new();
@@ -65,6 +65,7 @@ pub fn run(config: Config) -> Result<()> {
                 processed_transactions.extend(found_transactions);
             } else if details_match(stmtline, &R_GROUPED_EBILL) {
                 // ebills need to be disaggregated later
+
                 ebill_stmtlines.push(stmtline);
             } else {
                 let t = transaction_from_stmtline(stmtline, &config)?;
@@ -99,14 +100,27 @@ pub fn run(config: Config) -> Result<()> {
             }
 
             for ebill_stmtline in ebill_stmtlines {
-                // use the ebill regex to extract the number of payments
+                // use the ebill regex to extract the number of paymentss
+                let dets = ebill_stmtline
+                    .supplementary_details
+                    .as_ref()
+                    .ok_or(anyhow!("no supplementary details"))?;
+
+                let pmt_count = R_GROUPED_EBILL
+                    .captures(dets)
+                    .map(|cap| cap.get(1).map(|mtch| mtch.as_str()))
+                    .flatten()
+                    .ok_or(anyhow!("no ebill count in '{}'", dets))?
+                    .parse::<u32>()?;
+
                 let target_sum = ebill_stmtline.amount;
                 //TODO extract payment count and sum from ebill_stmtlines
                 // if both match unambiguously with old payments
                 // write the disaggregated payments to output
                 writeln!(
                     &mut of,
-                    "; ebill ({}) for {} {:?}\n",
+                    "; ebill ({})({}) for {} {:?}\n",
+                    pmt_count,
                     old_payments.len(),
                     date,
                     old_payments
