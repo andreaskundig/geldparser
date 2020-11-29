@@ -111,12 +111,27 @@ pub fn run(config: Config) -> Result<()> {
                     .map(|cap| cap.get(1).map(|mtch| mtch.as_str()))
                     .flatten()
                     .ok_or(anyhow!("no ebill count in '{}'", dets))?
-                    .parse::<u32>()?;
-
+                    .parse::<usize>()?;
                 let target_sum = ebill_stmtline.amount;
-                //TODO extract payment count and sum from ebill_stmtlines
-                // if both match unambiguously with old payments
-                // write the disaggregated payments to output
+                if pmt_count == old_payments.len() {
+                    writeln!(
+                        &mut of,
+                        "; ebill count={} matches",
+                        pmt_count
+                    )?;
+                    let pmt_sum: Decimal =
+                        old_payments.iter().map(|p| p.0).sum();
+                    writeln!(
+                        &mut of,
+                        "; ebill sums {}, {} equal: {}",
+                        pmt_sum, target_sum, pmt_sum == target_sum
+                    )?;
+                    //TODO if both sums match
+                    // write the disaggregated payments to output
+                } else if pmt_count < old_payments.len(){
+                    //TODO find if a combination of old payments
+                    // match target_sum
+                }
                 writeln!(
                     &mut of,
                     "; ebill ({})({}) for {} {:?}\n",
