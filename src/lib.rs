@@ -71,11 +71,12 @@ pub fn run(config: Config) -> Result<()> {
                 let t = transaction_from_stmtline(stmtline, &config)?;
                 writeln!(&mut of, "{}\n", t)?;
                 processed_transactions.push(t);
+
             }
         }
-
         // payments from the old csv file
         let old_payments_o = date_to_old_payments.get_mut(&date);
+        // process_ebills(&ebill_stmtlines, old_payments_o);
         if let Some(old_payments) = old_payments_o {
             // try to match processed transactions to old_payments_o
             // remove unambiguous matches
@@ -154,6 +155,101 @@ pub fn run(config: Config) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn process_ebills(ebill_stmtlines: &Vec<&StatementLine>,
+                  old_payments_o: &mut Option<&mut Vec<(Decimal, String)>>,
+                  config: &Config,
+                  of: &mut File) -> Result<()> {
+    if old_payments_o.is_none() {
+        // nothing to match
+        for ebill_stmtline in ebill_stmtlines {
+            let t =
+                transaction_from_stmtline(ebill_stmtline, &config)?;
+            writeln!(of, "{}\n", t)?;
+        }
+        return Ok(());
+    }
+
+    let old_payments = old_payments_o.as_mut().ok_or(anyhow!("can't be none"))?;
+    Ok(())
+        // let old_payments_o = date_to_old_payments.get_mut(&date);
+        // if let Some(old_payments) = old_payments_o {
+        //     // try to match processed transactions to old_payments_o
+        //     // remove unambiguous matches
+        //     for processed_transaction in processed_transactions {
+        //         let amount = &processed_transaction.amount;
+        //         let matching =
+        //             old_payments.iter().filter(|(a, _)| a == amount);
+        //         if matching.count() == 1 {
+        //             // discard the matching payment
+        //             let old_pmt_o = old_payments
+        //                 .iter()
+        //                 .position(|(a, _)| amount == a)
+        //                 .and_then(|pos| Some(old_payments.remove(pos)));
+        //             if let Some(op) = old_pmt_o {
+        //                 writeln!(
+        //                     &mut of,
+        //                     "; already processed old pmt on {}: {:?}",
+        //                     date, op
+        //                 )?;
+        //             }
+        //         }
+        //     }
+
+        //     for ebill_stmtline in ebill_stmtlines {
+        //         // use the ebill regex to extract the number of paymentss
+        //         let dets = ebill_stmtline
+        //             .supplementary_details
+        //             .as_ref()
+        //             .ok_or(anyhow!("no supplementary details"))?;
+
+        //         let pmt_count = R_GROUPED_EBILL
+        //             .captures(dets)
+        //             .map(|cap| cap.get(1).map(|mtch| mtch.as_str()))
+        //             .flatten()
+        //             .ok_or(anyhow!("no ebill count in '{}'", dets))?
+        //             .parse::<usize>()?;
+        //         let target_sum = ebill_stmtline.amount;
+        //         if pmt_count == old_payments.len() {
+        //             writeln!(
+        //                 &mut of,
+        //                 "; ebill count={} matches",
+        //                 pmt_count
+        //             )?;
+        //             let pmt_sum: Decimal =
+        //                 old_payments.iter().map(|p| p.0).sum();
+        //             writeln!(
+        //                 &mut of,
+        //                 "; ebill sums {}, {} equal: {}",
+        //                 pmt_sum, target_sum, pmt_sum == target_sum
+        //             )?;
+        //             //TODO if both sums match
+        //             // write the disaggregated payments to output
+        //         } else if pmt_count < old_payments.len(){
+        //             //TODO find if a combination of old payments
+        //             // match target_sum
+        //         }
+        //         writeln!(
+        //             &mut of,
+        //             "; ebill ({})({}) for {} {:?}\n",
+        //             pmt_count,
+        //             old_payments.len(),
+        //             date,
+        //             old_payments
+        //         )?;
+        //         let t =
+        //             transaction_from_stmtline(ebill_stmtline, &config)?;
+        //         writeln!(&mut of, "{}\n", t)?;
+        //     }
+        // } else {
+        //     // nothing to match
+        //     for ebill_stmtline in ebill_stmtlines {
+        //         let t =
+        //             transaction_from_stmtline(ebill_stmtline, &config)?;
+        //         writeln!(&mut of, "{}\n", t)?;
+        //     }
+        // }
 }
 
 fn details_match(stmtline: &StatementLine, regex: &Regex) -> bool {
