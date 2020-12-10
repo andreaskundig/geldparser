@@ -1,5 +1,8 @@
 use chrono::NaiveDate;
-use geldparser::{first_after, parse_messages, stmtlines_after, stmtlines_grouped_by_date_after};
+use geldparser::{
+    first_after, parse_messages, stmtlines_after,
+    stmtlines_grouped_by_date_after,
+};
 use mt940::parse_mt940;
 
 static DT: fn(i32, u32, u32) -> chrono::NaiveDate = NaiveDate::from_ymd;
@@ -38,7 +41,9 @@ fn it_groups_statement_lines() {
     let date1 = DT(2009, 01, 01);
     let mut stmt_count = 0;
     let mut group_count = 0;
-    for (_date, group) in &stmtlines_grouped_by_date_after(&date1, &messages) {
+    for (_date, group) in
+        &stmtlines_grouped_by_date_after(&date1, &messages)
+    {
         let stmtlines: Vec<_> = group.collect();
         //println!("lines {} {}", date, stmtlines.len());
         stmt_count += stmtlines.len();
@@ -49,7 +54,7 @@ fn it_groups_statement_lines() {
 }
 
 #[test]
-fn it_parses(){
+fn it_parses() {
     let input = "\
     :20:E00000000A97C5DA
 :25:CH6700700111800017056
@@ -100,7 +105,9 @@ Gemaess Ihrem eBanking Auftrag BLVL-2-19010121525545
     assert_eq!(7, transaction.statement_lines.len());
     let line6 = &transaction.statement_lines[6];
     assert!(line6.supplementary_details.is_some());
-    assert_eq!("eBanking: IVI Madrid, Avenida del",
-               line6.supplementary_details.as_ref().unwrap());
+    assert_eq!(
+        "eBanking: IVI Madrid, Avenida del",
+        line6.supplementary_details.as_ref().unwrap()
+    );
     assert_eq!(input_parsed[0].transaction_ref_no, "E00000000A97C5DA");
 }
