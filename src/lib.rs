@@ -13,6 +13,7 @@ use crate::accounts::{
 use chrono::NaiveDate;
 use mt940::Message;
 use mt940::{parse_mt940, sanitizers, StatementLine};
+use odf_transactions::RowTuple;
 use regex::Regex;
 use rust_decimal::Decimal;
 use std::{
@@ -76,6 +77,7 @@ pub fn run(config: Config) -> Result<()> {
         // payments from the old csv file
         let mut old_payments_o = date_to_old_payments.get_mut(&date);
         process_ebills(
+            &date,
             &ebill_stmtlines,
             &mut old_payments_o,
             &mut processed_transactions,
@@ -87,6 +89,7 @@ pub fn run(config: Config) -> Result<()> {
 }
 
 fn process_ebills(
+    date: &NaiveDate,
     ebill_stmtlines: &Vec<&StatementLine>,
     old_payments_o: &mut Option<&mut Vec<(Decimal, String)>>,
     processed_transactions: &mut Vec<Transaction>,
@@ -126,37 +129,19 @@ fn process_ebills(
     }
     for ebill_stmtline in ebill_stmtlines {
         // use the ebill regex to extract the number of paymentss
-        let dets = ebill_stmtline
+        let details = ebill_stmtline
             .supplementary_details
             .as_ref()
             .ok_or(anyhow!("no supplementary details"))?;
 
         let pmt_count = R_GROUPED_EBILL
-            .captures(dets)
+            .captures(details)
             .map(|cap| cap.get(1).map(|mtch| mtch.as_str()))
             .flatten()
-            .ok_or(anyhow!("no ebill count in '{}'", dets))?
+            .ok_or(anyhow!("no ebill count in '{}'", details))?
             .parse::<usize>()?;
         let target_sum = ebill_stmtline.amount;
-        if pmt_count == old_payments.len() {
-            writeln!(of, "; ebill count={} matches", pmt_count)?;
-            let pmt_sum: Decimal = old_payments.iter().map(|p| p.0).sum();
-            writeln!(
-                of,
-                "; ebill sums {}, {} equal: {}",
-                pmt_sum,
-                target_sum,
-                pmt_sum == target_sum
-            )?;
-        //TODO if both sums match
-        // write the disaggregated payments to output
-        } else if pmt_count < old_payments.len() {
-            //TODO find if a combination of old payments
-            // match target_sum
-        }
-        let date = ebill_stmtline
-            .entry_date
-            .unwrap_or(ebill_stmtline.value_date);
+        let mut payments_did_match = false;
         writeln!(
             of,
             "; ebill ({})({}) for {} {:?}\n",
@@ -165,8 +150,37 @@ fn process_ebills(
             date,
             old_payments
         )?;
-        let t = transaction_from_stmtline(ebill_stmtline, &config)?;
-        writeln!(of, "{}\n", t)?;
+        if pmt_count == old_payments.len() {
+            writeln!(of, "; ebill count={} matches", pmt_count)?;
+            let pmt_sum: Decimal = old_payments.iter().map(|p| p.0).sum();
+            writeln!(
+                of,
+                "; ebill sums at {} {}, {} equal: {}",
+                date,
+                pmt_sum,
+                target_sum,
+                pmt_sum == target_sum
+            )?;
+            if pmt_sum == target_sum {
+                payments_did_match = true;
+                for payment in old_payments.iter(){
+
+                //TODO convert old_payments to Transactions
+                // write the disaggregated payments to output
+
+                    let t = transaction_from_old_booked_payment(date, payment,
+                                                                config)?;
+                    writeln!(of, "{}\n", t)?;
+                }
+            }
+        } else if pmt_count < old_payments.len() {
+            //TODO find if a combination of old payments
+            // match target_sum
+        }
+        if !payments_did_match{
+            let t = transaction_from_stmtline(ebill_stmtline, &config)?;
+            writeln!(of, "{}\n", t)?;
+        }
     }
     Ok(())
 }
@@ -285,6 +299,17 @@ fn transaction_from_stmtline<'a>(
     Ok(transaction)
 }
 
+fn transaction_from_old_booked_payment<'a>(
+    date: &'a NaiveDate,
+    payment: &'a RowTuple,
+    config: &Config
+) -> Result<Transaction<'a>>{
+    let recipient = determine_recipient(&payment.1, config.interactive)?;
+    let transaction = Transaction::from_old_booked_payment(date, payment,
+                                                           recipient);
+    Ok(transaction)
+}
+
 fn determine_recipient(
     description: &str,
     interactive: bool,
@@ -363,6 +388,16 @@ impl<'a> Transaction<'a> {
                 .as_ref()
                 .map(String::as_str),
         }
+    }
+    fn from_old_booked_payment(
+        date: &'a NaiveDate,
+        payment: &'a RowTuple,
+        recipient: Recipient,
+    ) -> Transaction<'a> {
+        Transaction{ date, recipient,
+                     info_to_owner: Some(&payment.1),
+                     amount: payment.0,
+                     details: None }
     }
 }
 
