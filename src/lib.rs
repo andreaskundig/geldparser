@@ -163,13 +163,10 @@ fn process_ebills(
             )?;
             if pmt_sum == target_sum {
                 payments_did_match = true;
-                for payment in old_payments.iter(){
-
-                //TODO convert old_payments to Transactions
-                // write the disaggregated payments to output
-
-                    let t = transaction_from_old_booked_payment(date, payment,
-                                                                config)?;
+                for payment in old_payments.iter() {
+                    let t = transaction_from_old_booked_payment(
+                        date, payment, config,
+                    )?;
                     writeln!(of, "{}\n", t)?;
                 }
             }
@@ -177,7 +174,7 @@ fn process_ebills(
             //TODO find if a combination of old payments
             // match target_sum
         }
-        if !payments_did_match{
+        if !payments_did_match {
             let t = transaction_from_stmtline(ebill_stmtline, &config)?;
             writeln!(of, "{}\n", t)?;
         }
@@ -302,11 +299,11 @@ fn transaction_from_stmtline<'a>(
 fn transaction_from_old_booked_payment<'a>(
     date: &'a NaiveDate,
     payment: &'a RowTuple,
-    config: &Config
-) -> Result<Transaction<'a>>{
+    config: &Config,
+) -> Result<Transaction<'a>> {
     let recipient = determine_recipient(&payment.1, config.interactive)?;
-    let transaction = Transaction::from_old_booked_payment(date, payment,
-                                                           recipient);
+    let transaction =
+        Transaction::from_old_booked_payment(date, payment, recipient);
     Ok(transaction)
 }
 
@@ -394,10 +391,13 @@ impl<'a> Transaction<'a> {
         payment: &'a RowTuple,
         recipient: Recipient,
     ) -> Transaction<'a> {
-        Transaction{ date, recipient,
-                     info_to_owner: Some(&payment.1),
-                     amount: payment.0,
-                     details: None }
+        Transaction {
+            date,
+            recipient,
+            info_to_owner: Some(&payment.1),
+            amount: payment.0,
+            details: None,
+        }
     }
 }
 
@@ -464,6 +464,39 @@ impl Config {
         }
     }
 }
+// TODO In Rust, it's more common to pass slices as arguments
+// rather than vectors when you just want to provide read access
+fn pick(
+    available: Vec<i32>,
+    number_to_pick: i32,
+    accumulator: Vec<i32>,
+) -> Vec<Vec<i32>> {
+    if number_to_pick == 0 {
+        return vec![accumulator];
+    }
+    // if number_to_pick == 1 {
+    //     //TODO check if we can do this in the else
+    //     let mut res_1 = vec!();
+    //     for &av in available.iter() {
+    //         let mut v = accumulator.to_vec();
+    //         v.push(av);
+    //         res_1.push(v);
+    //     }
+    //     return res_1;
+    // } else {
+    //
+    // create new availables with one element less.
+    let mut res_2 = vec!();
+    for i in 0..available.len() {
+        let mut new_av = available.to_vec();
+        let mut new_ac = accumulator.to_vec();
+        new_ac.push(new_av.remove(i));
+        let picked = pick(new_av, number_to_pick - 1, new_ac);
+        res_2.extend(picked);
+    }
+    return res_2;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,4 +508,45 @@ mod tests {
         println!("|{}|", recipient.name);
         assert!(recipient.name == "LE; POUSSE-POUSSE SARL 1205");
     }
+
+    #[test]
+    fn combinations() {
+        let xs = [1, 2, 3, 4, 5];
+
+        for n in 1..xs.len() {
+            let available = &xs.to_vec();
+            for x in &xs {
+                let picked = vec![x];
+                while picked.len() < n {
+                    // picked.append()
+                }
+            }
+            // pick
+            println!("{}", n);
+        }
+        assert!(false);
+    }
+    /*
+    1
+    2
+    3
+    4
+    5
+    12
+    13
+    14
+    15
+    23
+    24
+    25
+    34
+    35
+    45
+
+    123
+    234
+
+
+
+    */
 }
