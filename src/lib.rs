@@ -472,7 +472,7 @@ fn pick(available: Vec<i32>, accumulator: Vec<i32>,) -> Vec<Vec<i32>> {
     }
     let mut av = available.to_vec();
     let mut result = vec!();
-    for i in 0..available.len() {
+    while av.len() > 0 {
         let removed = av.remove(0);
         let mut new_ac = accumulator.to_vec();
         new_ac.push(removed);
