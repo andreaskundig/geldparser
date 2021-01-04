@@ -474,25 +474,22 @@ fn pick(
     if number_to_pick == 0 {
         return vec![accumulator];
     }
-    // if number_to_pick == 1 {
-    //     //TODO check if we can do this in the else
-    //     let mut res_1 = vec!();
-    //     for &av in available.iter() {
-    //         let mut v = accumulator.to_vec();
-    //         v.push(av);
-    //         res_1.push(v);
-    //     }
-    //     return res_1;
-    // } else {
-    //
     // create new availables with one element less.
     let mut res_2 = vec!();
-    for i in 0..available.len() {
-        let mut new_av = available.to_vec();
+    let mut av = available.to_vec();
+    for i in 0..available.len() - 1 {
+        let removed = av.remove(0);
         let mut new_ac = accumulator.to_vec();
-        new_ac.push(new_av.remove(i));
-        let picked = pick(new_av, number_to_pick - 1, new_ac);
+        new_ac.push(removed);
+        if (av.len() + new_ac.len()) as i32 == 2 {
+            av.extend(new_ac);
+        }else{
+
+        let picked = pick(av.to_vec(),
+                          number_to_pick - 1 - (i as i32), //?
+                          new_ac);
         res_2.extend(picked);
+        }
     }
     return res_2;
 }
@@ -509,22 +506,32 @@ mod tests {
         assert!(recipient.name == "LE; POUSSE-POUSSE SARL 1205");
     }
 
+fn vec_compare(va: &[i32] , vb: &[i32]) -> bool {
+    (va.len() == vb.len()) &&  // zip stops at the shortest
+     va.iter()
+       .zip(vb)
+       .all(|(a,b)| *a == *b)
+}
+
     #[test]
     fn combinations() {
-        let xs = [1, 2, 3, 4, 5];
-
-        for n in 1..xs.len() {
-            let available = &xs.to_vec();
-            for x in &xs {
-                let picked = vec![x];
-                while picked.len() < n {
-                    // picked.append()
-                }
-            }
-            // pick
-            println!("{}", n);
-        }
-        assert!(false);
+        let xs = vec!(1, 2, 3, 4, 5);
+        let acc = vec!();
+        let picked = pick(xs, 4, acc);
+        let c0 = [1, 2, 3, 4];
+        let c1 = [1, 2, 4];
+        let c2 = [1, 3, 4];
+        let c3 = [1, 4];
+        let c4 = [2, 3, 4];
+        let c5 = [2, 4];
+        let c6 = [3, 4];
+        assert!(vec_compare(&picked[0], &c0 ));
+        assert!(vec_compare(&picked[1], &c1 ));
+        assert!(vec_compare(&picked[2], &c2 ));
+        assert!(vec_compare(&picked[3], &c3 ));
+        assert!(vec_compare(&picked[4], &c4 ));
+        assert!(vec_compare(&picked[5], &c5 ));
+        assert!(vec_compare(&picked[6], &c6 ));
     }
     /*
     1
