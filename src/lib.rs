@@ -466,7 +466,7 @@ impl Config {
 }
 // TODO In Rust, it's more common to pass slices as arguments
 // rather than vectors when you just want to provide read access
-fn pick(available: Vec<i32>, accumulator: Vec<i32>,) -> Vec<Vec<i32>> {
+fn combination(available: Vec<i32>, accumulator: Vec<i32>,) -> Vec<Vec<i32>> {
     if available.len() == 0 {
         return vec![accumulator];
     }
@@ -476,9 +476,10 @@ fn pick(available: Vec<i32>, accumulator: Vec<i32>,) -> Vec<Vec<i32>> {
         let removed = av.remove(0);
         let mut new_ac = accumulator.to_vec();
         new_ac.push(removed);
-        let picked = pick(av.to_vec(), new_ac);
+        let picked = combination(av.to_vec(), new_ac);
         result.extend(picked);
     }
+    result.extend(vec![accumulator]);
     return result;
 }
 
@@ -505,22 +506,25 @@ fn vec_compare(va: &[i32] , vb: &[i32]) -> bool {
     fn combinations() {
         let xs = vec!(1, 2, 3, 4);
         let acc = vec!();
-        let picked = pick(xs, acc);
-        println!("SO {:?}", picked);
-        let c0 = [1, 2, 3, 4];
-        let c1 = [1, 2, 4];
-        let c2 = [1, 3, 4];
-        let c3 = [1, 4];
-        let c4 = [2, 3, 4];
-        let c5 = [2, 4];
-        let c6 = [3, 4];
-        assert!(vec_compare(&picked[0], &c0 ));
-        assert!(vec_compare(&picked[1], &c1 ));
-        assert!(vec_compare(&picked[2], &c2 ));
-        assert!(vec_compare(&picked[3], &c3 ));
-        assert!(vec_compare(&picked[4], &c4 ));
-        assert!(vec_compare(&picked[5], &c5 ));
-        assert!(vec_compare(&picked[6], &c6 ));
+        let comb = combination(xs, acc);
+        println!("{:?}", comb);
+        assert!(comb.len() == 16);
+        assert!(vec_compare(&comb[0], &vec![1, 2, 3, 4]));
+        assert!(vec_compare(&comb[1], &vec![1, 2, 3]));
+        assert!(vec_compare(&comb[2], &vec![1, 2, 4]));
+        assert!(vec_compare(&comb[3], &vec![1, 2]));
+        assert!(vec_compare(&comb[4], &vec![1, 3, 4]));
+        assert!(vec_compare(&comb[5], &vec![1, 3]));
+        assert!(vec_compare(&comb[6], &vec![1, 4]));
+        assert!(vec_compare(&comb[7], &vec![1]));
+        assert!(vec_compare(&comb[8], &vec![2, 3, 4]));
+        let comb = combination(vec!(1, 2), vec!());
+        println!("{:?}", comb);
+        assert!(comb.len() == 4);
+        assert!(vec_compare(&comb[0], &vec!(1,2) ));
+        assert!(vec_compare(&comb[1], &vec!(1)));
+        assert!(vec_compare(&comb[2], &vec!(2)));
+        assert!(vec_compare(&comb[3], &vec!()));
     }
     /*
     1
