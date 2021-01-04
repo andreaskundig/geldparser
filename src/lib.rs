@@ -466,32 +466,20 @@ impl Config {
 }
 // TODO In Rust, it's more common to pass slices as arguments
 // rather than vectors when you just want to provide read access
-fn pick(
-    available: Vec<i32>,
-    number_to_pick: i32,
-    accumulator: Vec<i32>,
-) -> Vec<Vec<i32>> {
-    if number_to_pick == 0 {
+fn pick(available: Vec<i32>, accumulator: Vec<i32>,) -> Vec<Vec<i32>> {
+    if available.len() == 0 {
         return vec![accumulator];
     }
-    // create new availables with one element less.
-    let mut res_2 = vec!();
     let mut av = available.to_vec();
-    for i in 0..available.len() - 1 {
+    let mut result = vec!();
+    for i in 0..available.len() {
         let removed = av.remove(0);
         let mut new_ac = accumulator.to_vec();
         new_ac.push(removed);
-        if (av.len() + new_ac.len()) as i32 == 2 {
-            av.extend(new_ac);
-        }else{
-
-        let picked = pick(av.to_vec(),
-                          number_to_pick - 1 - (i as i32), //?
-                          new_ac);
-        res_2.extend(picked);
-        }
+        let picked = pick(av.to_vec(), new_ac);
+        result.extend(picked);
     }
-    return res_2;
+    return result;
 }
 
 #[cfg(test)]
@@ -515,9 +503,10 @@ fn vec_compare(va: &[i32] , vb: &[i32]) -> bool {
 
     #[test]
     fn combinations() {
-        let xs = vec!(1, 2, 3, 4, 5);
+        let xs = vec!(1, 2, 3, 4);
         let acc = vec!();
-        let picked = pick(xs, 4, acc);
+        let picked = pick(xs, acc);
+        println!("SO {:?}", picked);
         let c0 = [1, 2, 3, 4];
         let c1 = [1, 2, 4];
         let c2 = [1, 3, 4];
